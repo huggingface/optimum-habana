@@ -18,6 +18,7 @@ Fine-tuning the library models for sequence to sequence speech recognition.
 # You can also adapt this script on your own sequence to sequence speech
 # recognition task. Pointers for this are left as comments.
 
+import io
 import logging
 import os
 import sys
@@ -26,9 +27,12 @@ from typing import Any, Optional, Union
 
 import datasets
 import evaluate
+import librosa
+import numpy as np
+import soundfile as sf
 import torch
 import transformers
-from datasets import DatasetDict, load_dataset
+from datasets import Audio, DatasetDict, load_dataset
 from transformers import (
     AutoConfig,
     AutoFeatureExtractor,
@@ -60,6 +64,9 @@ check_optimum_habana_min_version("1.19.0.dev0")
 require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/speech-recognition/requirements.txt")
 
 logger = logging.getLogger(__name__)
+
+# Disable torchcodec decoding in datasets before any dataset ops
+os.environ.setdefault("HF_DATASETS_DISABLE_TORCHCODEC", "1")
 
 
 @dataclass
@@ -264,18 +271,19 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         # different padding methods
         model_input_name = self.processor.model_input_names[0]
         input_features = [{model_input_name: feature[model_input_name]} for feature in features]
-        label_features = [{"input_ids": feature["labels"]} for feature in features]
-
         batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
 
         if self.forward_attention_mask:
             batch["attention_mask"] = torch.LongTensor([feature["attention_mask"] for feature in features])
 
-        kwargs = {}
-        if self.label_features_max_length is not None:
-            kwargs["padding"] = "max_length"
-            kwargs["max_length"] = self.label_features_max_length
-        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt", **kwargs)
+        texts = [feature["labels"] for feature in features]
+        labels_batch = self.processor.tokenizer(
+            texts,
+            padding="max_length" if self.label_features_max_length else True,
+            max_length=self.label_features_max_length,
+            return_tensors="pt",
+            truncation=True,
+        )
 
         # replace padding with -100 to ignore loss correctly
         labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
@@ -304,6 +312,10 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # Ensure DDP doesn't break with gradient checkpointing
+    if training_args.gradient_checkpointing:
+        training_args.ddp_find_unused_parameters = True
+
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_speech_recognition_seq2seq", model_args, data_args)
@@ -328,6 +340,10 @@ def main():
         cache_dir=model_args.cache_dir,
         token=model_args.token,
     )
+
+    if training_args.gradient_checkpointing and getattr(gaudi_config, "use_hpu_graphs_for_inference", False):
+        logger.warning("Disabling HPU graphs for inference during training because gradient checkpointing is enabled.")
+        gaudi_config.use_hpu_graphs_for_inference = False
 
     # Log on each process the small summary:
     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
@@ -421,6 +437,10 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
+    raw_datasets = raw_datasets.cast_column(
+        data_args.audio_column_name, Audio(sampling_rate=feature_extractor.sampling_rate, decode=False)
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -510,20 +530,47 @@ def main():
         raw_datasets["eval"] = raw_datasets["eval"].select(range(data_args.max_eval_samples))
 
     def prepare_dataset(batch):
-        # process audio
         sample = batch[audio_column_name]
-        inputs = feature_extractor(
-            sample["array"], sampling_rate=sample["sampling_rate"], return_attention_mask=forward_attention_mask
-        )
-        # process audio length
-        batch[model_input_name] = inputs.get(model_input_name)[0]
-        batch["input_length"] = len(sample["array"])
-        if forward_attention_mask:
-            batch["attention_mask"] = inputs.get("attention_mask")[0]
+        path = sample.get("path", None)
+        wav, sr = None, None
 
-        # process targets
-        input_str = batch[text_column_name].lower() if do_lower_case else batch[text_column_name]
-        batch["labels"] = tokenizer(input_str).input_ids
+        # Try to load from file path
+        if isinstance(path, str):
+            try:
+                wav, sr = sf.read(path, dtype="float32", always_2d=False)
+            except Exception as e:
+                logger.warning(
+                    f"SoundFile failed to read {path} ({type(e).__name__}: {e}). Falling back to torchaudio."
+                )
+                wav, sr = None, None
+
+        # Fallback: load from bytes if available
+        if wav is None:
+            raw = sample.get("bytes")
+            if raw is None:
+                raise RuntimeError(f"Cannot open audio sample {sample}")
+            wav, sr = sf.read(io.BytesIO(raw), dtype="float32", always_2d=False)
+
+        # Convert to mono
+        if isinstance(wav, np.ndarray) and wav.ndim > 1:
+            wav = wav.mean(axis=1)
+
+        # Resample if necessary
+        target_sr = feature_extractor.sampling_rate
+        if sr != target_sr:
+            wav = librosa.resample(wav, orig_sr=sr, target_sr=target_sr)
+            sr = target_sr
+
+        inputs = feature_extractor(wav, sampling_rate=sr)
+        batch[model_input_name] = inputs.input_features[0]
+        batch["input_length"] = len(wav)
+
+        if text_column_name in batch:
+            text = batch[text_column_name]
+            if do_lower_case and isinstance(text, str):
+                text = text.lower()
+            batch["labels"] = text
+
         return batch
 
     with training_args.main_process_first(desc="dataset map pre-processing"):

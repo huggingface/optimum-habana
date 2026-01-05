@@ -35,7 +35,7 @@ pip install -r requirements.txt
 **Recommended (datasets>=4.0.0):** use the COCO captions dataset hosted on the Hub. It provides image–caption pairs and does **not** require `trust_remote_code`:
 ```python
 import datasets
-ds = datasets.load_dataset("sentence-transformers/coco-captions", split="train")
+ds = datasets.load_dataset("regisss/coco_2017", split="train")
 ```
 This dataset exposes at least the columns `image` (PIL image) and `caption` (string).
 If you prefer local files, you can also use the built-in Datasets `imagefolder` builder (not a placeholder) to load images/captions from a directory (it typically expects a small CSV/JSON with columns such as `image_path` and `caption`).
@@ -84,7 +84,7 @@ Run the following command for single-device training:
 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
-    --dataset_name sentence-transformers/coco-captions \
+    --dataset_name regisss/coco_2017 \
     --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
@@ -100,7 +100,6 @@ python run_clip.py \
     --dataloader_num_workers 16 \
     --sdp_on_bf16 \
     --bf16 \
-    --trust_remote_code \
     --torch_compile_backend=hpu_backend \
     --torch_compile
 ```
@@ -115,7 +114,7 @@ PT_ENABLE_INT64_SUPPORT=1 \
 python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --output_dir=/tmp/clip_roberta \
     --model_name_or_path=./clip-roberta \
-    --dataset_name sentence-transformers/coco-captions \ 
+    --dataset_name regisss/coco_2017 \ 
     --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
@@ -136,7 +135,6 @@ python3 ../gaudi_spawn.py --world_size 8 --use_mpi run_clip.py \
     --torch_compile_backend=hpu_backend \
     --torch_compile \
     --logging_nan_inf_filter \
-    --trust_remote_code
 ```
 
 > [!NOTE]
@@ -159,7 +157,6 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridget
   --output_dir /tmp/bridgetower-test \
   --model_name_or_path BridgeTower/bridgetower-large-itm-mlm-itc \
   --dataset_name jmhessel/newyorker_caption_contest --dataset_config_name matching \
-  --dataset_revision 3c6c4f6c0ff7e902833d3afa5f8f3875c2b036e6 \
   --image_column image --caption_column image_description \
   --remove_unused_columns=False \
   --do_train --do_eval --do_predict \
@@ -172,8 +169,6 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_mpi --world_size 8 run_bridget
   --throughput_warmup_steps 3 \
   --logging_steps 10 \
   --dataloader_num_workers 1 \
-  --mediapipe_dataloader \
-  --trust_remote_code \
   --sdp_on_bf16
 ```
 
@@ -190,7 +185,7 @@ For instance, you can run inference with CLIP on COCO on 1 Gaudi card with the f
 PT_HPU_LAZY_MODE=1 python run_clip.py \
     --output_dir ./clip-roberta-finetuned \
     --model_name_or_path ./clip-roberta \
-    --dataset_name sentence-transformers/coco-captions \
+    --dataset_name regisss/coco_2017 \
     --image_column image \
     --caption_column caption \
     --remove_unused_columns=False \
@@ -204,7 +199,6 @@ PT_HPU_LAZY_MODE=1 python run_clip.py \
     --bf16 \
     --sdp_on_bf16 \
     --mediapipe_dataloader \
-    --trust_remote_code
 ```
 
 > [!NOTE]

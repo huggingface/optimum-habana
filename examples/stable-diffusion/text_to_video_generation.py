@@ -17,13 +17,14 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
 import torch
 from diffusers.utils.export_utils import export_to_video
 
-from optimum.habana.diffusers import GaudiCogVideoXPipeline, GaudiTextToVideoSDPipeline
+from optimum.habana.diffusers import GaudiCogVideoXPipeline, GaudiTextToVideoSDPipeline, GaudiWanPipeline
 from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
@@ -56,7 +57,7 @@ def main():
         "--pipeline_type",
         type=str,
         default="stable_diffusion",
-        help="pipeline type:stable_diffusion or cogvideoX",
+        help="pipeline type:stable_diffusion, cogvideoX or wan",
     )
     # Pipeline arguments
     parser.add_argument(
@@ -149,6 +150,11 @@ def main():
         choices=["bf16", "fp32", "autocast_bf16"],
         help="Which runtime dtype to perform generation in.",
     )
+    parser.add_argument(
+        "--use_distributed_cfg",
+        action="store_true",
+        help="Use distributed CFG (classifier-free guidance) across 2 devices for Wan pipeline. Requires even world size.",
+    )
     args = parser.parse_args()
     # Setup logging
     logging.basicConfig(
@@ -183,6 +189,13 @@ def main():
     elif args.dtype == "fp32":
         kwargs["torch_dtype"] = torch.float32
 
+    # Set RNG seed
+    seed_dist_offset = int(os.getenv("RANK", "0"))
+    if args.use_distributed_cfg:
+        # Same seed needed for a pair of workers with distributed CFG for SD3
+        seed_dist_offset = seed_dist_offset // 2
+    set_seed(args.seed + seed_dist_offset)
+
     # Generate images
     if args.pipeline_type == "stable_diffusion":
         pipeline: GaudiTextToVideoSDPipeline = GaudiTextToVideoSDPipeline.from_pretrained(
@@ -192,12 +205,13 @@ def main():
         pipeline: GaudiCogVideoXPipeline = GaudiCogVideoXPipeline.from_pretrained(args.model_name_or_path, **kwargs)
         pipeline.vae.enable_tiling()
         pipeline.vae.enable_slicing()
+    elif args.pipeline_type == "wan":
+        pipeline: GaudiWanPipeline = GaudiWanPipeline.from_pretrained(args.model_name_or_path, **kwargs)
     else:
         logger.error(f"unsupported pipeline type {args.pipeline_type}")
         return None
 
     if args.pipeline_type == "stable_diffusion":
-        set_seed(args.seed)
         outputs = pipeline(
             prompt=args.prompts,
             num_videos_per_prompt=args.num_videos_per_prompt,
@@ -239,6 +253,43 @@ def main():
         video_save_dir.mkdir(parents=True, exist_ok=True)
         filename = video_save_dir / "cogvideoX_out.mp4"
         export_to_video(video, str(filename.resolve()), fps=8)
+    elif args.pipeline_type == "wan":
+        outputs = pipeline(
+            prompt=args.prompts,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            negative_prompt=args.negative_prompts,
+            use_distributed_cfg=args.use_distributed_cfg,
+            output_type="np" if args.output_type == "mp4" else args.output_type,
+            **kwargs_call,
+        )
+
+        # Save the pipeline in the specified directory if not None
+        if args.pipeline_save_dir is not None:
+            pipeline.save_pretrained(args.pipeline_save_dir)
+
+        # Save videos in the specified directory if not None
+        if args.video_save_dir is not None:
+            if args.output_type == "mp4":
+                video_save_dir = Path(args.video_save_dir)
+                video_save_dir.mkdir(parents=True, exist_ok=True)
+
+                rank = int(os.getenv("RANK", "0"))
+                world_size = int(os.getenv("WORLD_SIZE", "1"))
+                rank_ext = f"_rank{rank}" if world_size > 1 else ""
+                skip_rank = False
+                if args.use_distributed_cfg and world_size > 1:
+                    rank_ext += f"and{rank + 1}"
+                    skip_rank = rank % 2 == 1
+
+                if not skip_rank:
+                    logger.info(f"Saving videos in {video_save_dir.resolve()}...")
+                    for i, video in enumerate(outputs.frames):
+                        filename = video_save_dir / f"wan_video_{i + 1}{rank_ext}.mp4"
+                        export_to_video(video, str(filename.resolve()), fps=16)
+            else:
+                logger.warning("--output_type should be equal to 'mp4' to save videos in --video_save_dir.")
 
 
 if __name__ == "__main__":

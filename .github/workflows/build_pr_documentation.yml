@@ -18,12 +18,12 @@ jobs:
       PR_CLONE_URL: ${{ github.event.pull_request.head.repo.clone_url }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
         with:
           repository: 'huggingface/doc-builder'
           path: doc-builder
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
         with:
           repository: 'huggingface/optimum-habana'
           path: optimum-habana
@@ -51,7 +51,7 @@ jobs:
           echo ${{ env.COMMIT_SHA }} > ./commit_sha
           echo ${{ env.PR_NUMBER }} > ./pr_number
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: doc-build-artifact
           path: optimum-habana/habana-doc-build/

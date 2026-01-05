@@ -325,9 +325,11 @@ def main():
     sdxl_models = ["stable-diffusion-xl", "sdxl"]
     sd3_models = ["stable-diffusion-3", "sd3"]
     flux_models = ["FLUX.1", "flux"]
+    qwen_models = ["Qwen-Image", "qwen"]
     sdxl = True if any(model in args.model_name_or_path for model in sdxl_models) else False
     sd3 = True if any(model in args.model_name_or_path for model in sd3_models) else False
     flux = True if any(model in args.model_name_or_path for model in flux_models) else False
+    qwen = True if any(model in args.model_name_or_path for model in qwen_models) else False
     controlnet = True if args.control_image is not None else False
     inpainting = True if (args.base_image is not None) and (args.mask_image is not None) else False
 
@@ -545,6 +547,24 @@ def main():
             from optimum.habana.diffusers import GaudiFluxPipeline
 
             pipeline = GaudiFluxPipeline.from_pretrained(
+                args.model_name_or_path,
+                **kwargs,
+            )
+
+    elif qwen:
+        # QwenImage pipelines
+        if controlnet:
+            raise ValueError("QwenImage+ControlNet pipeline is not currenly supported")
+        elif inpainting:
+            raise ValueError("QwenImage Inpainting pipeline is not currenly supported")
+        else:
+            if negative_prompts is None:
+                logger.warning("Adding an empty string, because you do not have specific concept to remove.")
+                kwargs_call["negative_prompt"] = " "
+
+            from optimum.habana.diffusers import GaudiQwenImagePipeline
+
+            pipeline = GaudiQwenImagePipeline.from_pretrained(
                 args.model_name_or_path,
                 **kwargs,
             )

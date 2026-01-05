@@ -236,14 +236,7 @@ class GaudiGenerationMixin(GenerationMixin):
         # 1. Handle BC:
         model_inputs = {}
         # - some models don't have `Cache` support (which implies they don't expect `cache_position` in `forward`)
-        if self._supports_cache_class:
-            model_inputs["cache_position"] = cache_position
-        # - `cache_position` was not a mandatory input in `prepare_inputs_for_generation` for those models, and this
-        #   function may be called outside of `generate`. Handle most use cases by creating `cache_position` on the fly
-        #   (this alternative is not as robust as calling `generate` and letting it create `cache_position`)
-        elif cache_position is None:
-            past_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-            cache_position = torch.arange(past_length, input_ids.shape[1], dtype=torch.long, device=input_ids.device)
+        model_inputs["cache_position"] = cache_position
 
         # 2. Generic cache-dependent input preparation
         if past_key_values is not None:
@@ -573,6 +566,17 @@ class GaudiGenerationMixin(GenerationMixin):
                     # Mark step if lazy mode is enabled
                     if lazy_mode:
                         self.htcore_generation.mark_step()
+        # For Non-MQA models with decode_attn_batch_split > 1, past_key_values is a list of list of list (k and v)
+        elif not is_mqa_model and model_kwargs.get("decode_attn_batch_split", 1) > 1:
+            for i, layer in enumerate(past_key_values):  # Iterate over layers
+                for j, split_kv_caches in enumerate(layer):  # Iterate over splitted kv_cache
+                    for k, k_or_v in enumerate(split_kv_caches):  # Iterate over k and v
+                        if torch.is_tensor(k_or_v) and k_or_v.shape[-2] == kv_cache_len_pad_amount:
+                            # tensor(batch_size/num_splits, n_heads, kv_cache_len, head_dim)
+                            past_key_values[i][j][k] = torch.nn.functional.pad(k_or_v, (0, 0, 0, pad_amount))
+                            # Mark step if lazy mode is enabled
+                            if lazy_mode:
+                                self.htcore_generation.mark_step()
         # For Non-MQA models, the past_key_values is a list of lists (k and v)
         else:
             for i, layer in enumerate(past_key_values):  # Iterate over layers
@@ -1606,8 +1610,11 @@ class GaudiGenerationMixin(GenerationMixin):
         # prepare for allocate kv cache
         model_kwargs["reuse_cache"] = generation_config.reuse_cache
 
-        # prepare for attention batch splitting
+        # prepare for attention batch splitting for prompt
         model_kwargs["attn_batch_split"] = generation_config.attn_batch_split
+
+        # prepare for attention batch splitting for decode
+        model_kwargs["decode_attn_batch_split"] = generation_config.decode_attn_batch_split
 
         # Keep logits in bf16
         model_kwargs["logits_bf16"] = kwargs.get("logits_bf16")
@@ -2941,9 +2948,13 @@ class GaudiGenerationMixin(GenerationMixin):
                         if "inputs_embeds" in model_inputs
                         else None
                     )
+                    if model_kwargs["decode_attn_batch_split"] > 1:
+                        output_past_key_values_shape = outputs.past_key_values[0][0][0].shape
+                    else:
+                        output_past_key_values_shape = outputs.past_key_values[0][0].shape
                     do_padding = (
                         key_to_check is not None
-                        and outputs.past_key_values[0][0].shape[2] == model_inputs[key_to_check].shape[1]
+                        and output_past_key_values_shape[2] == model_inputs[key_to_check].shape[1]
                         and generation_config.max_new_tokens > 1
                     )
 

@@ -23,7 +23,6 @@ from typing import Optional, Union
 
 import torch
 import torch.utils.checkpoint
-from torch import nn
 from transformers.models.llava_next.modeling_llava_next import (
     LlavaNextCausalLMOutputWithPast,
     LlavaNextForConditionalGeneration,
@@ -84,7 +83,6 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
-                return_dict=True,
                 cache_position=cache_position,
                 # TODO: from Transformers v4.45, `generate` sets `num_logits_to_keep` to 1 if not given, which we don't want here
                 # logits_to_keep=logits_to_keep,
@@ -94,31 +92,15 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                 **kwargs,
             )
 
-            if inputs_embeds.shape[1] != 1 and pixel_values is not None and self.text_tokens_pos is not None:
-                batch_size, seq_len = self.text_tokens_pos.shape
-                batch_indices = torch.arange(batch_size).repeat_interleave(seq_len)
-                logits = outputs[0][batch_indices, self.text_tokens_pos.reshape(-1), :].reshape(
-                    batch_size, seq_len, -1
-                )
-            else:
-                logits = outputs[0]
+            hidden_states = outputs[0]
+            # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+            slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+            logits = self.lm_head(hidden_states[:, slice_indices, :])
 
             loss = None
             if labels is not None:
-                # Shift so that tokens < n predict n
-                if attention_mask is not None:
-                    # we use the input attention mask to shift the logits and labels, because it is 2D.
-                    # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
-                    shift_attention_mask = attention_mask[:, -(logits.shape[1] - 1) :].to(logits.device)
-                    shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
-                    shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
-                else:
-                    shift_logits = logits[..., :-1, :].contiguous()
-                    shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = nn.CrossEntropyLoss()
-                loss = loss_fct(
-                    shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1).to(shift_logits.device)
+                loss = self.loss_function(
+                    logits=logits, labels=labels, vocab_size=self.config.text_config.vocab_size, **kwargs
                 )
 
             return LlavaNextCausalLMOutputWithPast(
@@ -328,7 +310,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                         image_feature = torch.cat(
                             (
                                 image_feature,
-                                self.image_newline[:, None, None].expand(*image_feature.shape[:-1], 1),
+                                self.model.image_newline[:, None, None].expand(*image_feature.shape[:-1], 1),
                             ),
                             dim=-1,
                         )
@@ -336,7 +318,7 @@ class GaudiLlavaNextForConditionalGeneration(LlavaNextForConditionalGeneration):
                         image_feature = torch.cat((base_image_feature, image_feature), dim=0)
                     else:
                         image_feature = image_feature[0]
-                        image_feature = torch.cat((image_feature, self.image_newline[None]), dim=0)
+                        image_feature = torch.cat((image_feature, self.model.image_newline[None]), dim=0)
                     new_image_features.append(image_feature)
                 if legacy_processing:
                     image_features = torch.stack(new_image_features, dim=0)

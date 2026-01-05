@@ -178,6 +178,31 @@ FLUX in quantization mode by setting runtime variable `QUANT_CONFIG=quantization
 
 To run with FLUX.1-schnell model, a distilled version of FLUX.1 (which is not gated), use `--model_name_or_path black-forest-labs/FLUX.1-schnell`.
 
+### Qwen-Image
+
+Qwen-Image was introduced Alibaba Cloud [here](https://www.alibabacloud.com/blog/introducing-qwen-image-novel-model-in-image-generation-and-editing_602447)
+
+Here is how to run Qwen-Image model:
+
+```bash
+PT_HPU_LAZY_MODE=1 python text_to_image_generation.py \
+    --model_name_or_path Qwen/Qwen-Image \
+    --prompts "A cat holding a sign that says hello world" \
+    --negative_prompts " " \
+    --num_images_per_prompt 10 \
+    --batch_size 1 \
+    --num_inference_steps 10 \
+    --image_save_dir /tmp/qwen-image \
+    --scheduler flow_match_euler_discrete \
+    --use_habana \
+    --use_hpu_graphs \
+    --gaudi_config Habana/stable-diffusion \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+> [!NOTE]
+> If you don't add `--negative_prompts` then empty string will be added to it as default value.
 ## ControlNet
 
 ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543)
@@ -456,6 +481,112 @@ python image_to_video_generation.py \
     --sdp_on_bf16 \
     --bf16
 ```
+
+### Image-to-Video with Wan 2.2
+Wan2.2 is a comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
+
+Here is how to generate a video with one image and text prompt:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python image_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --image_path "https://raw.githubusercontent.com/Wan-Video/Wan2.2/main/examples/i2v_input.JPG" \
+    --video_save_dir ./wan2.2-output \
+    --prompts "The cat removes the glasses from its eyes." \
+    --use_habana \
+    --use_hpu_graphs \
+    --height 1088 \
+    --width 800 \
+    --fps 24 \
+    --num_frames 121 \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+#### Distributed Image-to-Video Wan 2.2 Inference
+
+Wan models use classifier-free guidance (CFG), which processes both conditional and unconditional latents during denoising.
+With the `--use_distributed_cfg` option, we parallelize these 2 steps across a pair of HPU devices and then synchronize to apply guidance.
+While this mode uses 2 HPUs per unique generated video, it achieves almost 2x faster inference.
+
+Here is an example of running Wan2.2 image-to-video model with 2 HPU devices in disributed CFG mode:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python ../gaudi_spawn.py --world_size 2 image_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --image_path "https://raw.githubusercontent.com/Wan-Video/Wan2.2/main/examples/i2v_input.JPG" \
+    --video_save_dir ./wan2.2-output \
+    --prompts "The cat removes the glasses from its eyes." \
+    --use_habana \
+    --use_hpu_graphs \
+    --use_distributed_cfg \
+    --height 1088 \
+    --width 800 \
+    --fps 24 \
+    --num_frames 121 \
+    --sdp_on_bf16 \
+    --bf16
+```
+
+> [!NOTE]
+> Distributed CFG mode requires even number of devices in the `world_size`.
+
+
+### Text-to-Video with Wan 2.2
+Wan2.2 is a comprehensive and open suite of video foundation models. Please refer to [Huggingface Wan2.2 doc](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B)
+
+Here is how to generate a video with text prompt:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python text_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --prompts "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
+    --pipeline_type wan \
+    --num_videos_per_prompt 1 \
+    --use_habana \
+    --use_hpu_graphs \
+    --height 704 \
+    --width 1280 \
+    --num_frames 121 \
+    --num_inference_steps 50 \
+    --guidance_scale 5.0 \
+    --output_type mp4 \
+    --dtype bf16
+```
+
+#### Distributed Text-to-Video Wan 2.2 Inference
+
+Wan models use classifier-free guidance (CFG), which processes both conditional and unconditional latents during denoising.
+With the `--use_distributed_cfg` option, we parallelize these 2 steps across a pair of HPU devices and then synchronize to apply guidance.
+While this mode uses 2 HPUs per unique generated video, it achieves almost 2x faster inference.
+
+Here is an example of running Wan2.2 text-to-video model with 2 HPU devices in disributed CFG mode:
+
+```bash
+PT_HPU_LAZY_MODE=1 \
+python ../gaudi_spawn.py --world_size 2 text_to_video_generation.py \
+    --model_name_or_path "Wan-AI/Wan2.2-TI2V-5B-Diffusers" \
+    --prompts "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
+    --pipeline_type wan \
+    --num_videos_per_prompt 1 \
+    --use_habana \
+    --use_hpu_graphs \
+    --use_distributed_cfg \
+    --height 704 \
+    --width 1280 \
+    --num_frames 121 \
+    --num_inference_steps 50 \
+    --guidance_scale 5.0 \
+    --output_type mp4 \
+    --dtype bf16
+```
+
+> [!NOTE]
+> Distributed CFG mode requires even number of devices in the `world_size`.
+
 
 ### Text-to-Video with CogvideoX
 

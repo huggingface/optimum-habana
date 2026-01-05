@@ -95,9 +95,15 @@ class GaudiCLIPAttention(CLIPAttention):
         keys = self.k_proj(hidden_states)
         values = self.v_proj(hidden_states)
 
-        queries = queries.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
-        keys = keys.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
-        values = values.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2)
+        queries = queries.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2).contiguous()
+        keys = keys.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2).contiguous()
+        values = values.view(batch_size, seq_length, -1, self.head_dim).transpose(1, 2).contiguous()
+
+        proj_shape = (batch_size * self.num_heads, -1, self.head_dim)
+        queries = queries.view(*proj_shape)
+        keys = keys.view(*proj_shape)
+        values = values.view(*proj_shape)
+
         # CLIP text model uses both `causal_attention_mask` and `attention_mask`
         # in case FA2 kernel is called, `is_causal` should be inferred from `causal_attention_mask`
         if self.config._attn_implementation == "flash_attention_2":
@@ -132,10 +138,8 @@ class GaudiCLIPAttention(CLIPAttention):
 
             attn_output = self.bmm2(attn_weights, values)
 
-        # attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
         attn_output = attn_output.transpose(1, 2).contiguous()
-
-        attn_output = attn_output.reshape(batch_size, seq_length, embed_dim).contiguous()
+        attn_output = attn_output.reshape(batch_size, seq_length, -1).contiguous()
         attn_output = self.out_proj(attn_output)
 
         if not output_attentions:

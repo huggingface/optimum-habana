@@ -133,6 +133,7 @@ Here are a few settings you may be interested in:
 - `--attn_softmax_bf16` to run attention softmax layer in bfloat16 precision provided that the model (such as Llama) supports it
 - `--trim_logits` to calculate logits only for the last token in the first time step provided that the model (such as Llama) supports it
 - `--attn_batch_split` specifies the number of smaller batches into which attention and MLP processing are split to improve parallelization. By default, no splitting is performed (value is 1). Splitting is enabled only for prompt processing. This configuration is most effective for batch sizes (BS) > 125 and tensor parallelism (TP) >= 2, with a recommended value of '3' splits. This feature is thoroughly tested with Llama 2 70B but may be useful for other models as well.
+- `--decode_attn_batch_split` specifies the number of smaller batches to split the attention and MLP processing into for better parallelization.By default, no splitting is performed (value is 1). Splitting is enabled only for decode.
 - `--dynamo_specialize_float` enables specialization for float inputs by setting `specialize_float=True` in the `torch._dynamo` configuration. This option is applicable only when using `torch.compile` and can enhance performance, particularly in models utilizing FP8 quantization.
 
 For example, you can reproduce the results presented in [this blog post](https://huggingface.co/blog/habana-gaudi-2-bloom) with the following command:
@@ -215,7 +216,7 @@ You can also provide the name of a dataset from the Hugging Face Hub to perform 
 
 By default, the first column in the dataset of type `string` will be used as prompts. You can also select the column you want with the argument `--column_name`.
 
-Here is an example with [JulesBelveze/tldr_news](https://huggingface.co/datasets/JulesBelveze/tldr_news):
+Here is an example with [dim/tldr_news](https://huggingface.co/datasets/dim/tldr_news):
 ```bash
 PT_HPU_LAZY_MODE=1 python run_generation.py \
 --model_name_or_path gpt2 \
@@ -223,11 +224,10 @@ PT_HPU_LAZY_MODE=1 python run_generation.py \
 --max_new_tokens 100 \
 --use_hpu_graphs \
 --use_kv_cache \
---dataset_name JulesBelveze/tldr_news \
+--dataset_name dim/tldr_news \
 --column_name content \
 --bf16 \
 --sdp_on_bf16 \
---trust_remote_code
 ```
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.

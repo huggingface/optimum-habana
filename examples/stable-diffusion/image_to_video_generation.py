@@ -15,6 +15,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -26,7 +27,9 @@ from optimum.habana.diffusers import (
     GaudiEulerDiscreteScheduler,
     GaudiI2VGenXLPipeline,
     GaudiStableVideoDiffusionPipeline,
+    GaudiWanImageToVideoPipeline,
 )
+from optimum.habana.transformers.gaudi_configuration import GaudiConfig
 from optimum.habana.utils import set_seed
 
 
@@ -205,6 +208,11 @@ def main():
     )
     parser.add_argument("--num_frames", type=int, default=25, help="The number of video frames to generate.")
     parser.add_argument(
+        "--use_distributed_cfg",
+        action="store_true",
+        help="Use distributed CFG (classifier-free guidance) across 2 devices for Wan pipeline. Requires even world size.",
+    )
+    parser.add_argument(
         "--profiling_warmup_steps",
         default=0,
         type=int,
@@ -236,6 +244,18 @@ def main():
     is_i2v_model = any(model in args.model_name_or_path for model in i2v_models)
     cogvideo_models = ["cogvideo"]
     is_cogvideo_model = any(model in args.model_name_or_path.lower() for model in cogvideo_models)
+    wan_i2v_models = ["Wan2.2"]
+    is_wan_i2v_model = any(model in args.model_name_or_path for model in wan_i2v_models)
+
+    if is_wan_i2v_model:
+        gaudi_config_kwargs = {"use_fused_adam": True, "use_fused_clip_norm": True}
+        if args.bf16:
+            gaudi_config_kwargs["use_torch_autocast"] = True
+
+        gaudi_config = GaudiConfig(**gaudi_config_kwargs)
+        args.gaudi_config_name = gaudi_config
+        logger.info(f"Gaudi Config: {gaudi_config}")
+
     # Load input image(s)
     input = []
     logger.info("Input image(s):")
@@ -245,6 +265,11 @@ def main():
         image = load_image(image_path)
         if is_i2v_model:
             image = image.convert("RGB")
+        elif is_wan_i2v_model:
+            image = image.resize((args.height, args.width))
+            # wan2.2 i2v pipeline only accepts 1 image
+            input = image
+            break
         else:
             image = image.resize((args.height, args.width))
         input.append(image)
@@ -272,7 +297,13 @@ def main():
         "sdp_on_bf16": args.sdp_on_bf16,
     }
 
-    set_seed(args.seed)
+    # Set RNG seed
+    seed_dist_offset = int(os.getenv("RANK", "0"))
+    if args.use_distributed_cfg:
+        # Same seed needed for a pair of workers with distributed CFG for SD3
+        seed_dist_offset = seed_dist_offset // 2
+    set_seed(args.seed + seed_dist_offset)
+
     if args.bf16:
         kwargs["torch_dtype"] = torch.bfloat16
 
@@ -342,6 +373,27 @@ def main():
             num_frames=args.num_frames,
             generator=generator,
         )
+    elif is_wan_i2v_model:
+        del kwargs["scheduler"]  # WAN I2V uses its own scheduler
+        pipeline = GaudiWanImageToVideoPipeline.from_pretrained(
+            args.model_name_or_path,
+            **kwargs,
+        )
+        outputs = pipeline(
+            image=input,
+            prompt=args.prompts,
+            negative_prompt=args.negative_prompts,
+            num_videos_per_prompt=args.num_videos_per_prompt,
+            height=args.height,
+            width=args.width,
+            num_frames=args.num_frames,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=5.0,  # WAN I2V recommended guidance scale
+            use_distributed_cfg=args.use_distributed_cfg,
+            output_type=args.output_type,
+            profiling_warmup_steps=args.profiling_warmup_steps,
+            profiling_steps=args.profiling_steps,
+        )
     else:
         pipeline = GaudiStableVideoDiffusionPipeline.from_pretrained(
             args.model_name_or_path,
@@ -380,23 +432,30 @@ def main():
         if args.output_type == "pil":
             video_save_dir = Path(args.video_save_dir)
             video_save_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Saving video frames in {video_save_dir.resolve()}...")
-            for i, frames in enumerate(outputs.frames):
-                if args.gif:
-                    export_to_gif(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".gif")
-                else:
-                    export_to_video(frames, args.video_save_dir + "/gen_video_" + str(i).zfill(2) + ".mp4", fps=7)
 
-                if args.save_frames_as_images:
-                    for j, frame in enumerate(frames):
-                        frame.save(
-                            args.video_save_dir
-                            + "/gen_video_"
-                            + str(i).zfill(2)
-                            + "_frame_"
-                            + str(j).zfill(2)
-                            + ".png"
+            rank = int(os.getenv("RANK", "0"))
+            world_size = int(os.getenv("WORLD_SIZE", "1"))
+            rank_ext = f"_rank{rank}" if world_size > 1 else ""
+            skip_rank = False
+            if args.use_distributed_cfg and world_size > 1:
+                rank_ext += f"and{rank + 1}"
+                skip_rank = rank % 2 == 1
+
+            if not skip_rank:
+                logger.info(f"Saving video frames in {video_save_dir.resolve()}...")
+                for i, frames in enumerate(outputs.frames):
+                    if args.gif:
+                        export_to_gif(frames, f"{args.video_save_dir}/gen_video_{str(i).zfill(2)}{rank_ext}.gif")
+                    else:
+                        export_to_video(
+                            frames, f"{args.video_save_dir}/gen_video_{str(i).zfill(2)}{rank_ext}.mp4", fps=args.fps
                         )
+
+                    if args.save_frames_as_images:
+                        for j, frame in enumerate(frames):
+                            frame.save(
+                                f"{args.video_save_dir}/gen_video_{str(i).zfill(2)}_frame_{str(j).zfill(2)}{rank_ext}.png"
+                            )
         else:
             logger.warning("--output_type should be equal to 'pil' to save frames in --video_save_dir.")
 

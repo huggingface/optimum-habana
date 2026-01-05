@@ -226,9 +226,7 @@ from .mllama import (
     GaudiMllamaTextModel,
     GaudiMllamaTextSelfAttention,
     GaudiMllamaVisionEncoder,
-    GaudiMllamaVisionEncoderLayer,
     GaudiMllamaVisionModel,
-    GaudiMllamaVisionSdpaAttention,
 )
 from .modeling_all_models import (
     KVCache,
@@ -373,7 +371,7 @@ from .t5 import (
     gaudi_T5Stack_forward,
 )
 from .table_transformer import gaudi_table_transformer_conv_encoder_forward
-from .video_llava import GaudiVideoLlavaForConditionalGeneration
+from .video_llava import GaudiVideoLlavaForConditionalGeneration, GaudiVideoLlavaModel
 from .vision_encoder_decoder import (
     gaudi_VisionEncoderDecoderModel_prepare_inputs_for_generation,
 )
@@ -389,11 +387,11 @@ from .wav2vec2 import (
     gaudi_wav2vec2forctc_forward,
 )
 from .whisper import (
+    GaudiWhisperAttention,
     GaudiWhisperDecoder,
     GaudiWhisperDecoderLayer,
     GaudiWhisperForConditionalGeneration,
     GaudiWhisperModel,
-    GaudiWhisperSdpaAttention,
 )
 from .xglm import (
     GaudiXGLMForCausalLM,
