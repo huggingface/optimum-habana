@@ -45,6 +45,8 @@ jobs:
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
       - name: Run tests
+        env:
+          TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
         run: |
             docker run \
             --rm \
@@ -60,7 +62,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest \
-            /bin/bash tests/ci/slow_tests_diffusers.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
+            /bin/bash tests/ci/slow_tests_diffusers.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
   deepspeed:
     name: Test DeepSpeed models
     if: ${{ !cancelled() && (success() || failure()) }}
@@ -74,6 +76,8 @@ jobs:
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
       - name: Run tests
+        env:
+          TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
         run: |
             docker run \
             --rm \
@@ -89,7 +93,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest \
-            /bin/bash tests/ci/slow_tests_deepspeed.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
+            /bin/bash tests/ci/slow_tests_deepspeed.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
   fsdp:
     name: Test FSDP models
     if: ${{ !cancelled() && (success() || failure()) }}
@@ -103,6 +107,8 @@ jobs:
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
       - name: Run tests
+        env:
+          TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
         run: |
             docker run \
             --rm \
@@ -118,7 +124,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest \
-            make slow_tests_fsdp TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
+            make slow_tests_fsdp TOKEN="$TEXT_GENERATION_CI_HUB_TOKEN"
   multi-card:
     name: Test multi-card models
     if: ${{ !cancelled() && (success() || failure()) }}
@@ -132,6 +138,8 @@ jobs:
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
       - name: Run tests
+        env:
+          TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
         run: |
             docker run \
             --rm \
@@ -147,7 +155,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest \
-            /bin/bash tests/ci/slow_tests_8x.sh ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
+            /bin/bash tests/ci/slow_tests_8x.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
   single-card:
     name: Test single-card models
     if: ${{ !cancelled() && (success() || failure()) }}
@@ -194,6 +202,8 @@ jobs:
         run: |
             docker pull vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
       - name: Run tests
+        env:
+          TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
         run: |
             docker run \
             --rm \
@@ -209,7 +219,7 @@ jobs:
             --net=host \
             --ipc=host \
             vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest \
-            make slow_tests_text_generation_example TOKEN=${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
+            make slow_tests_text_generation_example TOKEN="$TEXT_GENERATION_CI_HUB_TOKEN"
   trl:
     name: Test TRL integration
     if: ${{ !cancelled() && (success() || failure()) }}
