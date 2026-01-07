@@ -170,7 +170,7 @@ class HabanaModelAdapter(HFLM):
 
     @property
     def device(self):
-        return "hpu"
+        return torch.device("hpu")
 
     @max_length.setter
     def max_length(self, value: int) -> None:
@@ -200,7 +200,7 @@ class HabanaModelAdapter(HFLM):
             pad_token_id = getattr(self._model.config, "pad_token_id", 0)
             inps = F.pad(inps, (0, padding_length), value=pad_token_id)
             eval_logger.debug(f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})")
-        logits = self._model(inps.to(self.device_), **self.model_inputs)["logits"]
+        logits = self._model(inps.to(self.device), **self.model_inputs)["logits"]
 
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
