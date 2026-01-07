@@ -145,7 +145,7 @@ def setup_lm_eval_parser():
         "--metadata",
         type=json.loads,
         default=None,
-        help="""JSON string metadata to pass to task configs, for example '{"max_seq_lengths":[4096,8192]}'. Will be merged with model_args. Can also be set in task config.""",
+        help="""JSON string metadata to pass to task configs, for example '{"max_length":1024}'. Will be merged with model_args. Can also be set in task config.""",
     )
     parser.add_argument(
         "--apply_chat_template",
