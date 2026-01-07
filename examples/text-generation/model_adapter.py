@@ -170,9 +170,7 @@ class HabanaModelAdapter(HFLM):
 
     @property
     def device(self):
-        # We need to do padding ourselves, otherwise we'll end up with recompilations
-        # Returning 'cpu' to keep tensors on CPU in lm_eval code
-        return "cpu"
+        return "hpu"
 
     @max_length.setter
     def max_length(self, value: int) -> None:
@@ -202,12 +200,10 @@ class HabanaModelAdapter(HFLM):
             pad_token_id = getattr(self._model.config, "pad_token_id", 0)
             inps = F.pad(inps, (0, padding_length), value=pad_token_id)
             eval_logger.debug(f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})")
-        logits = self._model(inps.to(self.device_), **self.model_inputs)["logits"].cpu()
+        logits = self._model(inps.to(self.device_), **self.model_inputs)["logits"]
 
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
-        logits = logits.to(torch.float32)
-
         return logits
 
     def generate_until(self, requests: list[Instance], disable_tqdm: bool = False) -> list[str]:
@@ -232,16 +228,10 @@ class HabanaModelAdapter(HFLM):
         Patched method
         source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/models/huggingface.py#L951
         """
-        # temperature = 0.0 if not set
-        # if do_sample is false and temp==0.0:
-        # remove temperature, as do_sample=False takes care of this
-        # and we don't want a warning from HF
         generation_kwargs["temperature"] = generation_kwargs.get("temperature", 0.0)
         do_sample = generation_kwargs.get("do_sample")
-        # The temperature has to be a strictly positive float -- if it is 0.0, use greedy decoding strategies
         if generation_kwargs.get("temperature") == 0.0 and do_sample is None:
             generation_kwargs["do_sample"] = do_sample = False
-
         if do_sample is False and generation_kwargs.get("temperature") == 0.0:
             generation_kwargs.pop("temperature")
         if self.options.static_shapes:
@@ -257,10 +247,10 @@ class HabanaModelAdapter(HFLM):
                     generation_kwargs["attention_mask"], (0, padding_length), value=0
                 )
         # move context & attention_mask to hpu
-        context = context.to("hpu")
-        generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
+        context = context.to(self.device)
+        generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to(self.device)
         with torch.autocast(
-            device_type="hpu",
+            device_type=self.device,
             dtype=self.mixed_precision_dtype,
             enabled=self.mixed_precision_dtype is not None,
         ):
