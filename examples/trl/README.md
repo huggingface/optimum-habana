@@ -20,7 +20,7 @@ $ pip install -U -r requirements.txt
 Installing DeepSpeed
 
 ```sh
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.23.0
 ```
 
 Running single card training

@@ -27,11 +27,11 @@ cd optimum-habana/examples/text-generation/docker
 > **All build and run steps listed in this document need to be executed on Gaudi Hardware**
 >    
 
-2) To build the `oh-1.22.0-gaudi` image from the Dockerfile, use the command below.
+2) To build the `oh-1.23.0-gaudi` image from the Dockerfile, use the command below.
 ```bash
 ## Set the next line if you are using a HTTP proxy on your build machine
 BUILD_ARGS="--build-arg http_proxy --build-arg https_proxy --build-arg no_proxy"
-docker build -f Dockerfile $BUILD_ARGS -t oh-1.22.0-gaudi .
+docker build -f Dockerfile $BUILD_ARGS -t oh-1.23.0-gaudi .
 ```
 
 ## Single Card Models
@@ -40,8 +40,8 @@ docker build -f Dockerfile $BUILD_ARGS -t oh-1.22.0-gaudi .
 DOCKER_OPTS="-e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host -d --runtime=habana --restart always"
 DOCKER_OPTS="${DOCKER_OPTS} -e HF_TOKEN=$hf_token -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy"
 DOCKER_OPTS="${DOCKER_OPS} -v /mnt/hf_cache:/mnt/hf_cache"
-docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=1 --name oh-1.22.0 oh-1.22.0-gaudi -c "sleep infinity"
-docker exec -it oh-1.22.0 bash
+docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=1 --name oh-1.23.0 oh-1.23.0-gaudi -c "sleep infinity"
+docker exec -it oh-1.23.0 bash
 ```
 
 2) Build Measurement files for Single Card models - this needs to be run once per model. 
@@ -114,8 +114,8 @@ python3 run_generation.py \
 DOCKER_OPTS="-e OMPI_MCA_btl_vader_single_copy_mechanism=none --cap-add=sys_nice --ipc=host -d --runtime=habana --restart always"
 DOCKER_OPTS="${DOCKER_OPTS} -e HF_TOKEN=$hf_token -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy"
 DOCKER_OPTS="${DOCKER_OPS} -v /mnt/hf_cache:/mnt/hf_cache"
-docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=0,1 --name oh-1.22.-multicard0 oh-1.22.0-gaudi -c "sleep infinity"
-docker exec -it oh-1.22.0 bash
+docker run --entrypoint /bin/bash $DOCKER_OPTS -e HABANA_VISIBLE_DEVICES=0,1 --name oh-1.23.-multicard0 oh-1.23.0-gaudi -c "sleep infinity"
+docker exec -it oh-1.23.0 bash
 ```
 
 2) Build Measurement files for Single Card models - this needs to be run once per model. 

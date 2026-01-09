@@ -224,7 +224,7 @@ clean:
 test_installs:
 	python -m pip install .[tests]
 
-DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
+DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.23.0
 
 install_deepspeed:
 	@set -eu
