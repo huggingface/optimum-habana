@@ -339,7 +339,7 @@ class GaudiStableDiffusionInpaintPipeline(GaudiDiffusionPipeline, StableDiffusio
         >>> mask_image = download_image(mask_url).resize((512, 512))
 
         >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-inpainting", torch_dtype=torch.float16
+        ...     "sd2-community/stable-diffusion-2-inpainting", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

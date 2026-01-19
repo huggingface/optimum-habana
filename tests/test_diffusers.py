@@ -793,7 +793,8 @@ class GaudiStableDiffusionPipelineTester(TestCase):
         ]
         num_images_per_prompt = 28
         batch_size = 7
-        model_name = "stabilityai/stable-diffusion-2-1"
+        # Stability AI has removed stable-diffusion-2 models. This uses unofficial mirror by sd2-community
+        model_name = "sd2-community/stable-diffusion-2-1"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
         pipeline = GaudiStableDiffusionPipeline.from_pretrained(
             model_name,
@@ -2635,7 +2636,8 @@ class GaudiStableDiffusionDepth2ImgPipelineTester(TestCase):
     @legacy
     def test_depth2img_pipeline(self):
         gaudi_config = GaudiConfig(use_torch_autocast=True)
-        model_name = "stabilityai/stable-diffusion-2-depth"
+        # Stability AI has removed stable-diffusion-2 models. This uses unofficial mirror by sd2-community
+        model_name = "sd2-community/stable-diffusion-2-depth"
         scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 
         pipe = GaudiStableDiffusionDepth2ImgPipeline.from_pretrained(
@@ -5687,7 +5689,8 @@ class StableDiffusionInpaintPipelineTests(
         prompts = [
             "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k",
         ]
-        model_name = "stabilityai/stable-diffusion-2-inpainting"
+        # Stability AI has removed stable-diffusion-2 models. This uses unofficial mirror by sd2-community
+        model_name = "sd2-community/stable-diffusion-2-inpainting"
         num_images_per_prompt = 12
         batch_size = 4
         pipeline = GaudiStableDiffusionInpaintPipeline.from_pretrained(

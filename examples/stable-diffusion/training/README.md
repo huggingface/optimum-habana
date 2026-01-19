@@ -91,11 +91,14 @@ To download the example conditioning images locally, run:
 python download_train_datasets.py
 ```
 
+> [!DISCLAIMER]
+> Stable Diffusion 2 models family has been discontinued and withdrawn by Stability AI. The following instruction uses mirrored models maintained by sd2-community, not maintained by Stability AI.
+
 Then proceed to training with command:
 
 ```bash
 PT_HPU_LAZY_MODE=1 python train_controlnet.py \
-   --pretrained_model_name_or_path=stabilityai/stable-diffusion-2-1 \
+   --pretrained_model_name_or_path=sd2-community/stable-diffusion-2-1 \
    --output_dir=/tmp/stable_diffusion2_1 \
    --dataset_name=fusing/fill50k \
    --resolution=512 \
@@ -116,11 +119,14 @@ with `python ../../gaudi_spawn.py --world_size <num-HPUs> train_controlnet.py`.
 
 ### Inference
 
+> [!DISCLAIMER]
+> Stable Diffusion 2 models family has been discontinued and withdrawn by Stability AI. The following instruction uses mirrored models maintained by sd2-community, not maintained by Stability AI.
+
 After training completes, you can use `text_to_image_generation.py` sample to run inference with the fine-tuned ControlNet model:
 
 ```bash
 PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-2-1 \
+    --model_name_or_path sd2-community/stable-diffusion-2-1 \
     --controlnet_model_name_or_path /tmp/stable_diffusion2_1 \
     --prompts "pale golden rod circle with old lace background" \
     --control_image "./cnet/conditioning_image_1.png" \
@@ -224,9 +230,12 @@ python download_train_datasets.py
 
 To launch the multi-card Stable Diffusion training, use:
 
+> [!DISCLAIMER]
+> Stable Diffusion 2 models family has been discontinued and withdrawn by Stability AI. The following instruction uses mirrored models maintained by sd2-community, not maintained by Stability AI.
+
 ```bash
 PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
-    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1"  \
+    --pretrained_model_name_or_path="sd2-community/stable-diffusion-2-1"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
     --class_data_dir="path-to-class-images" \
@@ -263,9 +272,12 @@ UNet or text encoder.
 
 To run the multi-card training, use:
 
+> [!DISCLAIMER]
+> Stable Diffusion 2 models family has been discontinued and withdrawn by Stability AI. The following instruction uses mirrored models maintained by sd2-community, not maintained by Stability AI.
+
 ```bash
 PT_HPU_LAZY_MODE=1 python ../../gaudi_spawn.py --world_size 8 --use_mpi train_dreambooth.py \
-    --pretrained_model_name_or_path="stabilityai/stable-diffusion-2-1"  \
+    --pretrained_model_name_or_path="sd2-community/stable-diffusion-2-1"  \
     --instance_data_dir="dog" \
     --output_dir="dog_sd" \
     --class_data_dir="path-to-class-images" \
@@ -310,7 +322,7 @@ After training completes, you can use `text_to_image_generation.py` sample for i
 
 ```bash
 PT_HPU_LAZY_MODE=1 python ../text_to_image_generation.py \
-    --model_name_or_path stabilityai/stable-diffusion-2-1  \
+    --model_name_or_path sd2-community/stable-diffusion-2-1  \
     --unet_adapter_name_or_path dog_sd/unet \
     --prompts "a sks dog" \
     --num_images_per_prompt 5 \
