@@ -52,7 +52,8 @@ def main():
 
     parser.add_argument(
         "--model_name_or_path",
-        default="stabilityai/stable-diffusion-2-depth",
+        # Stability AI has removed stable-diffusion-2 models. This uses unofficial mirror by sd2-community
+        default="sd2-community/stable-diffusion-2-depth",
         type=str,
         help="Path to pre-trained model",
     )
