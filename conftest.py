@@ -135,7 +135,7 @@ def pytest_configure(config):
                 "-m",
                 "pip",
                 "install",
-                "git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@0.49.2",
+                "git+https://github.com/bitsandbytes-foundation/bitsandbytes.git@main",
             ]
         )
     name = ""
