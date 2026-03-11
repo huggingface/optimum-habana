@@ -23,7 +23,7 @@ This directory contains a script that showcases how to fine-tune any model suppo
 
 First, you should install the requirements:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt --no-deps
 ```
 
 ## Single-HPU training
