@@ -365,47 +365,6 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python .
 --flash_attention_causal_mask
 ```
 
-Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
-> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
---use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_llama3_405b_bs1_quant.txt \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---reuse_cache \
---use_flash_attention \
---flash_attention_recompute \
---flash_attention_causal_mask \
---trust_remote_code
-
-python quantization_tools/postprocess_measurements.py -m hqt_output
-```
-
-Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
-> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
---use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
---use_hpu_graphs \
---use_kv_cache \
---limit_hpu_graphs \
---max_input_tokens 2048 \
---max_new_tokens 2048 \
---batch_size 2 \
---bf16 \
---reuse_cache \
---trim_logits \
---use_flash_attention \
---flash_attention_recompute \
---flash_attention_causal_mask
-```
-
 Here is an example to measure the tensor quantization statistics on Llama3-8b with 1 card:
 
 ```bash
@@ -435,35 +394,6 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python r
 --bf16 \
 --trim_logits \
 --reuse_cache
-```
-
-Here is an example to measure the tensor quantization statistics on gemma with 1 card:
-
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
---model_name_or_path google/gemma-7b \
---use_hpu_graphs \
---use_kv_cache \
---max_new_tokens 100 \
---batch_size 1 \
---reuse_cache \
---bf16 \
---sdp_on_bf16
-
-python quantization_tools/postprocess_measurements.py -m hqt_output
-```
-
-Here is an example to quantize the model based on previous measurements for gemma with 1 card:
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation.py \
---model_name_or_path google/gemma-7b \
---use_hpu_graphs \
---use_kv_cache \
---max_new_tokens 100 \
---batch_size 1 \
---reuse_cache \
---bf16 \
---sdp_on_bf16
 ```
 
 Here is an example for running DeepSeek-R1 FP8 dynamic quantization without INC on 8-cards.
@@ -573,28 +503,6 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python .
 
 > [!NOTE]
 > For multi-card usage, the number of cards loaded and used needs to be kept consistent with that when saving.
-
-### Loading FP8 Checkpoints from Hugging Face
-You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be a model name from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127) or a path to FP8 Checkpoints saved in Hugging Face format.
-
-Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
-```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
---use_deepspeed --world_size 2 run_lm_eval.py \
--o acc_load_fp8_model.txt \
---model_name_or_path neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8 \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---use_flash_attention \
---flash_attention_recompute \
---attn_softmax_bf16 \
---bucket_size=128 \
---bucket_internal \
---load_quantized_model_with_inc
-```
 
 ### Loading 4 Bit Checkpoints from Hugging Face
 
