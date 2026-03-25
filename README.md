@@ -58,6 +58,7 @@ Please refer to the Intel Gaudi AI Accelerator official [installation guide](htt
 To install the latest stable release of this package
 ```bash
 pip install --upgrade-strategy eager optimum[habana]
+```
 
 The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is upgraded to the latest stable release.
 
