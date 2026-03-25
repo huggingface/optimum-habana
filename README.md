@@ -341,15 +341,23 @@ The list of validated models through continuous integration tests is posted [her
 Check the [contributor guide](https://github.com/huggingface/optimum/blob/v1.20-release/CONTRIBUTING.md) for instructions.
 
 ## Known Issues
-
-### bitsandbytes >= 0.5 with `torch.compile` can regress performance
-
-When running quantized workloads with bitsandbytes >= 0.5 and `torch.compile`, performance may regress.
-
-- **Root cause**: upstream bitsandbytes changes can reduce the effectiveness of `torch.compile` optimizations in some setups.
-- **Impact**: lower throughput may be observed compared to bitsandbytes 0.49.2.
-- **Scope**: this issue is upstream in bitsandbytes and is not specific to Intel Gaudi.
+ 
+### bitsandbytes compatibility issues with PyTorch >= 2.10
+ 
+Users running `PyTorch>=2.10` with bitsandbytes may encounter issues depending on the bitsandbytes version in use. This is an upstream problem tracked at https://github.com/bitsandbytes-foundation/bitsandbytes/issues/1904 and is not specific to Intel Gaudi and Optimum-Habana.
+ 
+#### bitsandbytes >= 0.50: degraded performance with `torch.compile`
+ 
+When running quantized workloads with `bitsandbytes>=0.50` and `torch.compile` on `PyTorch>=2.10`, performance may regress.
+ 
 - **Workarounds**:
-  - Pin `bitsandbytes==0.49.2` for workloads relying on `torch.compile`.
-  - Run without `torch.compile` when using bitsandbytes >= 0.5.
-- **Status**: an upstream fix is in progress.
+  - Run without `torch.compile`.
+  - Pin `bitsandbytes==0.49.2` and reduce batch size (see caveat below).
+ 
+#### bitsandbytes < 0.50: increased memory usage due to graph breaks
+ 
+When running quantized workloads with `bitsandbytes<0.50` (e.g. `bitsandbytes==0.49.2`) on `PyTorch>=2.10`, graph breaks may occur and cause increased memory consumption.
+ 
+- **Workarounds**:
+  - Run without `torch.compile`.
+  - Reduce batch size.
