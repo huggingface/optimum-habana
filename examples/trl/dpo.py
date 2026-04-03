@@ -211,8 +211,10 @@ if __name__ == "__main__":
         data_dir="data/rl", sanity_check=script_args.sanity_check, num_proc=script_args.num_workers
     )
     train_dataset = train_dataset.filter(
-        lambda x: len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
-        and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
+        lambda x: (
+            len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
+            and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
+        )
     )
 
     # 4. Load evaluation dataset
@@ -220,8 +222,10 @@ if __name__ == "__main__":
         data_dir="data/evaluation", sanity_check=True, num_proc=script_args.num_workers
     )
     eval_dataset = eval_dataset.filter(
-        lambda x: len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
-        and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
+        lambda x: (
+            len(x["prompt"]) + len(x["chosen"]) <= script_args.max_length
+            and len(x["prompt"]) + len(x["rejected"]) <= script_args.max_length
+        )
     )
 
     peft_config = LoraConfig(
