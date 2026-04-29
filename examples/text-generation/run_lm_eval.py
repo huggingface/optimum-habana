@@ -184,8 +184,7 @@ def main() -> None:
     # Keep the runtime datasets version aligned with requirements_lm_eval.txt.
     require_version(
         "datasets>=4.8.4",
-        "Install the LM-Eval dependencies with:\n"
-        "  pip install -r examples/text-generation/requirements_lm_eval.txt",
+        "Install the LM-Eval dependencies with:\n  pip install -r examples/text-generation/requirements_lm_eval.txt",
     )
 
     model, _, tokenizer, generation_config = initialize_model(args, logger)
