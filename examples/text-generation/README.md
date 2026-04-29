@@ -660,7 +660,7 @@ pip install -r requirements_lm_eval.txt
 ```
 
 > [!NOTE]
-> For lm-eval tasks that still rely on dataset scripts, use a separate env with datasets 3.x or switch to Parquet/Arrow variants. This repo requires datasets>=4.0.0.
+> The example requirements in this repo install `lm-eval==0.4.11` together with `datasets>=4.8.4`.
 
 The argument --system_instruction adds a system message to the beginning of the prompt.
 This instruction is treated as part of the input context and can influence how the model interprets the task or responds.
