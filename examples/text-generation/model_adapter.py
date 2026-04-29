@@ -25,7 +25,11 @@ import torch
 import torch.nn.functional as F
 from lm_eval.api.instance import Instance
 from lm_eval.models.huggingface import HFLM, TemplateLM
-from lm_eval.models.utils import get_dtype, stop_sequences_criteria
+
+try:
+    from lm_eval.models.utils_hf import get_dtype, stop_sequences_criteria
+except ImportError:
+    from lm_eval.models.utils import get_dtype, stop_sequences_criteria
 
 # Local imports
 from transformers import AutoModelForCausalLM, AutoTokenizer
