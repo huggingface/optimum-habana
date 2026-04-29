@@ -90,8 +90,11 @@ def test_stop_profiling(patched_profiler):
 
 
 def test_profiler_files():
+    print("aaa")
     profiler = HabanaProfile(warmup=1, active=1)
+    print("bbb")
     run_profiling(profiler)
+    print("ccc")
     assert os.path.exists(PROFILER_OUTPUT_DIR)
     assert len(os.listdir(PROFILER_OUTPUT_DIR)) == 1
 
