@@ -45,7 +45,7 @@ fast_tests_diffusers:
 	python -m pip install .[tests]
 	python -m pip install -r examples/stable-diffusion/requirements.txt
 	python -m pip install peft==0.17.0
-	python -m pytest -v -s tests/test_diffusers.py
+	python -m pytest tests/test_diffusers.py
 
 # Run single-card non-regression tests on image classification models
 fast_tests_image_classifications:
