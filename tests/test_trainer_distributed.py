@@ -118,22 +118,16 @@ if __name__ == "__main__":
     #
     # PYTHONPATH="src" python optimum-habana/examples/gaudi_spawn.py --world_size 8 --use_mpi --output_dir output_dir ./tests/test_trainer_distributed.py
 
-    print("000")
     parser = HfArgumentParser((GaudiTrainingArguments,))
-    print("111")
     training_args = parser.parse_args_into_dataclasses()[0]
-    print("222")
 
     gaudi_config_file = Path(__file__).parent.resolve() / Path("configs/gaudi_config_trainer_test.json")
-    print("333")
     gaudi_config = GaudiConfig.from_pretrained(gaudi_config_file)
-    print("444")
 
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_hpu: {training_args.world_size},"
         f" distributed training: {training_args.local_rank != -1}"
     )
-    print("555")
 
     # Essentially, what we want to verify in the distributed case is that we get all samples back,
     # in the right order. (this is crucial for prediction for instance)

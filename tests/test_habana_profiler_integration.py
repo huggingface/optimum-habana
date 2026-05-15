@@ -87,35 +87,34 @@ def test_integration_train_and_eval(oh_path, profiling_dir, temp_dir):
         profiling_dir / "train",
         profiling_dir / "evaluation",
     ]
-    print("BLABLA")
     run_command_and_check_profiler_output(command, expected_dirs, expected_num_files=1)
 
 
-# def test_integration_text_generation(oh_path, profiling_dir, temp_dir):
-#     command = (
-#         f"python3 {oh_path}/examples/text-generation/run_generation.py "
-#         "--model_name_or_path bigscience/bloomz-7b1 --batch_size 1 --use_kv_cache "
-#         f"--max_new_tokens 100 --use_hpu_graphs --bf16 --output_dir {temp_dir} "
-#         "--profiling_steps 1 --profiling_warmup_steps 1"
-#     )
-#     install_requirements(f"{oh_path}/examples/text-generation/requirements.txt")
-#     expected_dirs = [profiling_dir / "generate"]
-#     run_command_and_check_profiler_output(command, expected_dirs, expected_num_files=1)
+def test_integration_text_generation(oh_path, profiling_dir, temp_dir):
+    command = (
+        f"python3 {oh_path}/examples/text-generation/run_generation.py "
+        "--model_name_or_path bigscience/bloomz-7b1 --batch_size 1 --use_kv_cache "
+        f"--max_new_tokens 100 --use_hpu_graphs --bf16 --output_dir {temp_dir} "
+        "--profiling_steps 1 --profiling_warmup_steps 1"
+    )
+    install_requirements(f"{oh_path}/examples/text-generation/requirements.txt")
+    expected_dirs = [profiling_dir / "generate"]
+    run_command_and_check_profiler_output(command, expected_dirs, expected_num_files=1)
 
 
-# @pytest.mark.x8
-# def test_integration_stable_diffusion(oh_path, profiling_dir, temp_dir):
-#     world_size = 8
-#     command = (
-#         f"python {oh_path}/examples/gaudi_spawn.py --world_size {world_size} "
-#         f"{oh_path}/examples/stable-diffusion/text_to_image_generation.py "
-#         "--model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 "
-#         '--prompts "Sailing ship painting by Van Gogh" --num_images_per_prompt 1 '
-#         f"--batch_size 1 --image_save_dir {temp_dir} --scheduler euler_discrete "
-#         "--use_habana --use_hpu_graphs --gaudi_config Habana/stable-diffusion --bf16 "
-#         "--num_inference_steps 10 --optimize --sdp_on_bf16 "
-#         "--profiling_steps 1 --profiling_warmup_steps 1 --distributed"
-#     )
-#     install_requirements(f"{oh_path}/examples/stable-diffusion/requirements.txt")
-#     expected_dirs = [profiling_dir / "stable_diffusion"]
-#     run_command_and_check_profiler_output(command, expected_dirs, expected_num_files=world_size)
+@pytest.mark.x8
+def test_integration_stable_diffusion(oh_path, profiling_dir, temp_dir):
+    world_size = 8
+    command = (
+        f"python {oh_path}/examples/gaudi_spawn.py --world_size {world_size} "
+        f"{oh_path}/examples/stable-diffusion/text_to_image_generation.py "
+        "--model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 "
+        '--prompts "Sailing ship painting by Van Gogh" --num_images_per_prompt 1 '
+        f"--batch_size 1 --image_save_dir {temp_dir} --scheduler euler_discrete "
+        "--use_habana --use_hpu_graphs --gaudi_config Habana/stable-diffusion --bf16 "
+        "--num_inference_steps 10 --optimize --sdp_on_bf16 "
+        "--profiling_steps 1 --profiling_warmup_steps 1 --distributed"
+    )
+    install_requirements(f"{oh_path}/examples/stable-diffusion/requirements.txt")
+    expected_dirs = [profiling_dir / "stable_diffusion"]
+    run_command_and_check_profiler_output(command, expected_dirs, expected_num_files=world_size)
