@@ -145,7 +145,7 @@ def setup_lm_eval_parser():
         "--metadata",
         type=json.loads,
         default=None,
-        help="""JSON string metadata to pass to task configs, for example '{"max_length":1024}'. Will be merged with model_args. Can also be set in task config.""",
+        help="""JSON string metadata to pass to task configs, for example '{"max_seq_lengths":[4096,8192]}'. Will be merged with model_args. Can also be set in task config.""",
     )
     parser.add_argument(
         "--apply_chat_template",
@@ -181,11 +181,10 @@ def main() -> None:
     # Modified based on cli_evaluate function in https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/__main__.py#L301
     args = setup_lm_eval_parser()
 
-    # lm-eval==0.4.9.1 needs datasets<4.0 (and >=2.16.0). Remove when lm-eval supports datasets>=4.
+    # Keep the runtime datasets version aligned with requirements_lm_eval.txt.
     require_version(
-        "datasets<4.0,>=2.16.0",
-        "Use a separate environment for LM-Eval and install:\n"
-        "  pip install -r examples/text-generation/requirements_lm_eval.txt",
+        "datasets>=4.8.4",
+        "Install the LM-Eval dependencies with:\n  pip install -r examples/text-generation/requirements_lm_eval.txt",
     )
 
     model, _, tokenizer, generation_config = initialize_model(args, logger)
@@ -196,6 +195,8 @@ def main() -> None:
     import torch
     from lm_eval import evaluator, utils
     from model_adapter import HabanaModelAdapter
+
+    from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
     max_length = None
     metadata = None
@@ -216,8 +217,6 @@ def main() -> None:
 
     with torch.no_grad():
         lm = HabanaModelAdapter(tokenizer, model, args, generation_config, max_length=max_length)
-
-    from optimum.habana.utils import HabanaGenerationTime, get_hpu_memory_stats
 
     with HabanaGenerationTime() as timer:
         with torch.no_grad():

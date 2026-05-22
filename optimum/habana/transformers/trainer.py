@@ -196,7 +196,6 @@ def _get_input_update_settings(model, lazy_mode: Optional[bool] = None) -> tuple
 if TYPE_CHECKING:
     import optuna
 
-
 DATA_SAMPLERS = [RandomSampler, SeedableRandomSampler]
 
 logger = logging.get_logger(__name__)
@@ -1479,7 +1478,8 @@ class GaudiTrainer(Trainer):
                 return
 
         with safe_globals():
-            checkpoint_rng_state = torch.load(rng_file)
+            check_torch_load_is_safe()
+            checkpoint_rng_state = torch.load(rng_file, weights_only=True)
         random.setstate(checkpoint_rng_state["python"])
         np.random.set_state(checkpoint_rng_state["numpy"])
         torch.random.set_rng_state(checkpoint_rng_state["cpu"])

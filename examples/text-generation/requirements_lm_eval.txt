@@ -1,7 +1,11 @@
-lm-eval==0.4.9.1
-datasets<4.0.0,>=2.16.0 # pinned for lm-eval==0.4.9.1; unpin to datasets>=4.0.0 when supported
+lm-eval==0.4.11
+datasets>=4.8.4
+evaluate == 0.4.3
+rouge_score == 0.1.2
+accelerate
+pandas <= 2.2.2
+sentencepiece <= 0.2.0
 langdetect<=1.0.9
-immutabledict<=4.2.1
+immutabledict <= 4.2.1
 tiktoken
 blobfile
-sentencepiece

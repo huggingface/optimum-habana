@@ -49,8 +49,8 @@ fast_tests_diffusers:
 
 # Run single-card non-regression tests on image classification models
 fast_tests_image_classifications:
-	pip install timm
 	python -m pip install .[tests]
+	pip install --no-deps timm
 	python -m pytest tests/test_image_classification.py
 
 # Run unit and integration tests related to Image segmentation
@@ -225,7 +225,7 @@ clean:
 test_installs:
 	python -m pip install .[tests]
 
-DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
+DEEPSPEED_SPEC ?= git+https://github.com/HabanaAI/DeepSpeed.git@1.23.0
 
 install_deepspeed:
 	@set -eu

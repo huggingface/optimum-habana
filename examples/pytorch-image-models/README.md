@@ -23,7 +23,7 @@ This directory contains the scripts that showcase how to inference/fine-tune the
 First, you should install the requirements:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt --no-deps
 ```
 
 ## Training

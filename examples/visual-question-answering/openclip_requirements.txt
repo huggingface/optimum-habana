@@ -1,3 +1,12 @@
 open_clip_torch==2.23.0
 matplotlib
 
+# dependencies for open_clip_torch
+ftfy
+timm
+
+# dependencies for matplotlib
+contourpy
+cycler
+fonttools
+kiwisolver
