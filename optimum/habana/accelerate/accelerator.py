@@ -16,17 +16,20 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
+from types import MethodType
 
 import accelerate
 import torch
 from accelerate import Accelerator
 from accelerate.data_loader import prepare_data_loader
 from accelerate.logging import get_logger
-from accelerate.utils import DistributedType, PrecisionType
+from accelerate.utils import DistributedType, DynamoBackend, PrecisionType, convert_outputs_to_fp32
 
 from ..distributed import parallel_state
 from .utils.dataclasses import GaudiTERecipeKwargs
+from .utils.other import compile_regions, is_compiled_module
 from .utils.transformer_engine import convert_model, get_fp8_recipe
 
 

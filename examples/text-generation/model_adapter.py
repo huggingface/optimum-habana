@@ -200,7 +200,7 @@ class HabanaModelAdapter(HFLM):
             padding_length = bucket_length - seq_length
             pad_token_id = getattr(self._model.config, "pad_token_id", 0)
             inps = F.pad(inps, (0, padding_length), value=pad_token_id)
-            eval_logger.debug(f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})")
+            logger.debug(f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})")
         logits = self._model(inps.to(self.device), **self.model_inputs)["logits"]
 
         if self.options.static_shapes and padding_length > 0:
