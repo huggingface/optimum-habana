@@ -30,9 +30,5 @@ services:
     command: >
       sh -c "python -c 'from optimum import habana; print(\"optimum-habana:\", habana.__version__)'"
     extends: optimum-habana
-<<<<<<< HEAD
-    image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.22.0}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.19.0}
-=======
     image: ${REGISTRY}/${REPO}:b-${GITHUB_RUN_NUMBER:-0}-gaudi-${GAUDI_SW_VER:-1.24.0}-optimum-habana-examples-${OPTIMUM_HABANA_VER:-1.21.0}
->>>>>>> v1.21-release
 

@@ -1,14 +1,7 @@
-<<<<<<< HEAD
-torch>=1.5.0
-torchvision>=0.6.0
-datasets>=4.0.0
-evaluate
-=======
 torch >= 1.5.0
 torchvision >= 0.6.0
 datasets>=4.0.0
 evaluate == 0.4.3
->>>>>>> v1.21-release
 scikit-learn == 1.5.2
 timm>=0.9.16
 

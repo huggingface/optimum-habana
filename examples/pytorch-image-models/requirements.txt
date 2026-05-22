@@ -1,7 +1,5 @@
 timm
 datasets>=4.0.0
-<<<<<<< HEAD
-=======
 
 # dependencies for datasets
 dill<0.4.1,>=0.3.0
@@ -16,4 +14,3 @@ httpcore
 
 # dependencies for httpcore
 h11
->>>>>>> v1.21-release
