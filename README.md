@@ -15,11 +15,11 @@ limitations under the License.
 -->
 
 <a href="https://github.com/huggingface/optimum-habana#gh-light-mode-only">
-  <img src="https://github.com/huggingface/optimum-habana/blob/v1.20-release/readme_logo_light.png"/>
+  <img src="https://github.com/huggingface/optimum-habana/blob/main/readme_logo_light.png"/>
 </a>
 
 <a href="https://github.com/huggingface/optimum-habana#gh-dark-mode-only">
-  <img src="https://github.com/huggingface/optimum-habana/blob/v1.20-release/readme_logo_dark.png"/>
+  <img src="https://github.com/huggingface/optimum-habana/blob/main/readme_logo_dark.png"/>
 </a>
 
 
@@ -338,7 +338,7 @@ The list of validated models through continuous integration tests is posted [her
 
 ## Development
 
-Check the [contributor guide](https://github.com/huggingface/optimum/blob/v1.20-release/CONTRIBUTING.md) for instructions.
+Check the [contributor guide](https://github.com/huggingface/optimum/blob/main/CONTRIBUTING.md) for instructions.
 
 ## Known Issues
 
