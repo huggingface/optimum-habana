@@ -15,21 +15,56 @@
 
 from __future__ import annotations
 
-import contextlib
 import functools
+import math
 import os
+from dataclasses import make_dataclass
 from types import MethodType
 
-import accelerate
 import torch
 from accelerate import Accelerator
+from accelerate.accelerator import _split_batches
 from accelerate.data_loader import prepare_data_loader
 from accelerate.logging import get_logger
-from accelerate.utils import DistributedType, DynamoBackend, PrecisionType, convert_outputs_to_fp32
+from accelerate.scheduler import AcceleratedScheduler
+from accelerate.tracking import GeneralTracker
+from accelerate.utils import (
+    DataLoaderConfiguration,
+    DeepSpeedPlugin,
+    DistributedType,
+    DynamoBackend,
+    FullyShardedDataParallelPlugin,
+    GradientAccumulationPlugin,
+    KwargsHandler,
+    LoggerType,
+    MegatronLMPlugin,
+    PrecisionType,
+    ProjectConfiguration,
+    RNGType,
+    TorchDynamoPlugin,
+    TorchTensorParallelPlugin,
+    convert_outputs_to_fp32,
+    is_deepspeed_available,
+)
+from torch.optim.lr_scheduler import LRScheduler
+
+from .utils.other import compile_regions, compile_regions_deepspeed, is_compiled_module
+
+
+if is_deepspeed_available():
+    from accelerate.utils import (
+        DeepSpeedEngineWrapper,
+        DeepSpeedOptimizerWrapper,
+        DeepSpeedSchedulerWrapper,
+        DummyOptim,
+        DummyScheduler,
+    )
+
+
+import accelerate.utils.transformer_engine
 
 from ..distributed import parallel_state
 from .utils.dataclasses import GaudiTERecipeKwargs
-from .utils.other import compile_regions, is_compiled_module
 from .utils.transformer_engine import convert_model, get_fp8_recipe
 
 
@@ -41,48 +76,84 @@ accelerate.utils.dataclasses.TERecipeKwargs = GaudiTERecipeKwargs
 accelerate.accelerator.TERecipeKwargs = GaudiTERecipeKwargs
 
 
-@contextlib.contextmanager
-def patch_apply_fp8_autowrap():
-    original_apply_fp8_autowrap = accelerate.utils.transformer_engine.apply_fp8_autowrap
-    accelerate.utils.transformer_engine.apply_fp8_autowrap = lambda x, *args, **kwargs: x
-    accelerate.accelerator.apply_fp8_autowrap = lambda x, *args, **kwargs: x
-    accelerate.utils.apply_fp8_autowrap = lambda x, *args, **kwargs: x
-    yield
-    accelerate.utils.transformer_engine.apply_fp8_autowrap = original_apply_fp8_autowrap
-    accelerate.accelerator.apply_fp8_autowrap = original_apply_fp8_autowrap
-    accelerate.utils.apply_fp8_autowrap = original_apply_fp8_autowrap
-
-
 logger = get_logger(__name__)
 
 
 class GaudiAccelerator(Accelerator):
     def __init__(
         self,
-        *args,
-        mixed_precision: PrecisionType | None = None,
+        device_placement: bool = True,
+        split_batches: bool = _split_batches,
+        mixed_precision: PrecisionType | str | None = None,
+        gradient_accumulation_steps: int = 1,
+        cpu: bool = False,
+        dataloader_config: DataLoaderConfiguration | None = None,
+        deepspeed_plugin: DeepSpeedPlugin | dict[str, DeepSpeedPlugin] | None = None,
+        fsdp_plugin: FullyShardedDataParallelPlugin | None = None,
+        torch_tp_plugin: TorchTensorParallelPlugin | None = None,
+        megatron_lm_plugin: MegatronLMPlugin | None = None,
+        rng_types: list[str | RNGType] | None = None,
+        log_with: str | LoggerType | GeneralTracker | list[str | LoggerType | GeneralTracker] | None = None,
+        project_dir: str | os.PathLike | None = None,
+        project_config: ProjectConfiguration | None = None,
+        gradient_accumulation_plugin: GradientAccumulationPlugin | None = None,
+        step_scheduler_with_optimizer: bool = True,
+        kwargs_handlers: list[KwargsHandler] | None = None,
+        dynamo_backend: DynamoBackend | str | None = None,
+        dynamo_plugin: TorchDynamoPlugin | None = None,
+        deepspeed_plugins: DeepSpeedPlugin | dict[str, DeepSpeedPlugin] | None = None,
         # TODO: remove these when the features are upstream or removed
         force_autocast: bool = False,
         distribution_strategy: str = None,
-        compiled_autograd_enabled: bool = False,
-        **kwargs,
+        use_regional_compilation: bool | None = None,
+        compiled_autograd_enable: bool = False,
     ):
-        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8 (even with deepspeed)
-        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
-        super().__init__(*args, mixed_precision=mixed_precision, **kwargs)
-        self.compiled_autograd_enabled = compiled_autograd_enabled
+        self.use_regional_compilation = use_regional_compilation
+        self.compiled_autograd_enable = compiled_autograd_enable
         self.distribution_strategy = distribution_strategy
         self.force_autocast = force_autocast
         self.mpu = parallel_state
 
+        # This is to trigger the creation of te_recipe_handler when the env var is set to fp8
+        # it will be fixed in upstream accelerate
+        mixed_precision = mixed_precision or os.environ.get("ACCELERATE_MIXED_PRECISION", None)
+
+        super().__init__(
+            device_placement=device_placement,
+            split_batches=split_batches,
+            mixed_precision=mixed_precision,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            cpu=cpu,
+            dataloader_config=dataloader_config,
+            deepspeed_plugin=deepspeed_plugin,
+            fsdp_plugin=fsdp_plugin,
+            torch_tp_plugin=torch_tp_plugin,
+            megatron_lm_plugin=megatron_lm_plugin,
+            rng_types=rng_types,
+            log_with=log_with,
+            project_dir=project_dir,
+            project_config=project_config,
+            gradient_accumulation_plugin=gradient_accumulation_plugin,
+            step_scheduler_with_optimizer=step_scheduler_with_optimizer,
+            kwargs_handlers=kwargs_handlers,
+            dynamo_backend=dynamo_backend,
+            dynamo_plugin=dynamo_plugin,
+            deepspeed_plugins=deepspeed_plugins,
+        )
+
+        # This attribute works as a single source of truth about fp8 usage with the accelerator.
+        # it will be added in upstream accelerate
+        self.fp8_enabled = self.mixed_precision == "fp8" or mixed_precision == "fp8"
+
+        # will be fixed in upstream accelerate
+        self.has_fp8_handler = self.te_recipe_handler is not None or self.fp8_recipe_handler is not None
+
         # this is what will be used by the FP8ContextWrapper, avoiding recreating the recipe
         # we can clean this up later when the upstream accelerate is fixed
         self.fp8_recipe = None
-        self.has_fp8_handler = (self.te_recipe_handler or self.fp8_recipe_handler) is not None
         if self.has_fp8_handler:
             self.fp8_recipe = get_fp8_recipe(self.te_recipe_handler or self.fp8_recipe_handler)
 
-    # INFO: this adds support for fast_ddp by not applying DDP wrapper
     def prepare_model(self, model: torch.nn.Module, device_placement: bool = None, evaluation_mode: bool = False):
         """
         Prepares a PyTorch model for training in any distributed setup. It is recommended to use
@@ -317,18 +388,261 @@ class GaudiAccelerator(Accelerator):
             ############################################################################################################
         return model
 
-    # INFO: this adds support for autograd compilation to the deepspeed engine
+    # TODO: Remove when compile_regions is removed
     def _prepare_deepspeed(self, *args):
-        orig_num_models = len(self._models)
-        with patch_apply_fp8_autowrap():
-            prepared_deepspeed = super()._prepare_deepspeed(*args)
+        import deepspeed
 
-        if len(self._models) > orig_num_models and self._models[-1]._is_compiled:
-            # an engine was added and is compiled
-            self._models[-1]._is_compiled_autograd_enabled = self.compiled_autograd_enabled
+        deepspeed_plugin = self.state.deepspeed_plugin
 
-        return prepared_deepspeed
+        is_dataloader_present = any(isinstance(obj, torch.utils.data.DataLoader) for obj in args)
+        result = [
+            self._prepare_one(obj, first_pass=True)
+            if isinstance(obj, torch.utils.data.DataLoader)
+            else convert_model(obj)
+            if isinstance(obj, torch.nn.Module) and self.fp8_enabled
+            else obj
+            for obj in args
+        ]
 
+        if deepspeed_plugin.is_auto("train_micro_batch_size_per_gpu"):
+            if is_dataloader_present:
+                batch_sizes = [obj.batch_size for obj in args if hasattr(obj, "batch_size")]
+                if any(bs is None for bs in batch_sizes):
+                    raise ValueError(
+                        "At least one of the dataloaders passed to `accelerate.prepare()` has `None` as batch size. "
+                        "Please set an integer value in `train_micro_batch_size_per_gpu` in the deepspeed config file "
+                        "or assign integer value to `AcceleratorState().deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu']`."
+                    )
+                if self.split_batches:
+                    batch_sizes = [batch_size // self.num_processes for batch_size in batch_sizes]
+
+                batch_size_per_device = min(batch_sizes) if deepspeed_plugin.is_train_batch_min else max(batch_sizes)
+                if len(batch_sizes) > 1:
+                    logger.info(
+                        "Since you passed both train and evaluation dataloader, `is_train_batch_min` (here "
+                        f"{deepspeed_plugin.is_train_batch_min} will decide the `train_batch_size` ({batch_size_per_device})."
+                    )
+            else:
+                raise ValueError(
+                    "When using DeepSpeed, `accelerate.prepare()` requires you to pass at least one of training or evaluation dataloaders "
+                    "with `batch_size` attribute returning an integer value "
+                    "or alternatively set an integer value in `train_micro_batch_size_per_gpu` in the deepspeed config file "
+                    "or assign integer value to `AcceleratorState().deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu']`."
+                )
+        else:
+            batch_size_per_device = deepspeed_plugin.get_value("train_micro_batch_size_per_gpu")
+
+        # handle `gradient_accumulation_steps` when the value is `auto`
+        deepspeed_plugin.fill_match(
+            "gradient_accumulation_steps",
+            must_match=False,
+            gradient_accumulation_steps=self.gradient_accumulation_steps,
+        )
+
+        config_kwargs = {
+            "train_micro_batch_size_per_gpu": batch_size_per_device,
+            "train_batch_size": batch_size_per_device
+            * deepspeed_plugin.get_value("gradient_accumulation_steps")
+            * self.num_processes,
+            "gradient_clipping": 1.0,
+            "zero_optimization.stage3_gather_16bit_weights_on_model_save": False,
+        }
+
+        model = None
+        optimizer = None
+        scheduler = None
+        for obj in result:
+            if isinstance(obj, torch.nn.Module):
+                model = obj
+            elif isinstance(obj, (torch.optim.Optimizer, DummyOptim)):
+                optimizer = obj
+            elif (isinstance(obj, (LRScheduler, DummyScheduler))) or (
+                type(obj).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES
+            ):
+                scheduler = obj
+
+        if optimizer is not None:
+            if "optimizer" in deepspeed_plugin.deepspeed_config and not isinstance(optimizer, (DummyOptim)):
+                raise ValueError(
+                    "You cannot specify an optimizer in the config file and in the code at the same time. "
+                    "Please remove the optimizer from the config file or "
+                    "create `accelerate.utils.DummyOptim` in the code."
+                )
+            elif "optimizer" not in deepspeed_plugin.deepspeed_config and isinstance(optimizer, (DummyOptim)):
+                raise ValueError(
+                    "You cannot create a `DummyOptim` without specifying an optimizer in the config file."
+                )
+
+            if isinstance(optimizer, (torch.optim.Optimizer)):
+                deepspeed_plugin.deepspeed_config["zero_allow_untested_optimizer"] = True
+
+        if scheduler is not None:
+            if "scheduler" in deepspeed_plugin.deepspeed_config and not isinstance(scheduler, (DummyScheduler)):
+                raise ValueError(
+                    "You cannot specify a scheduler in the config file and in the code at the same time. "
+                    "Please remove the scheduler from the config file or "
+                    "create `accelerate.utils.DummyScheduler` in the code."
+                )
+            elif (
+                "scheduler" not in deepspeed_plugin.deepspeed_config
+                and isinstance(scheduler, (DummyScheduler))
+                and scheduler.lr_scheduler_callable is None
+            ):
+                raise ValueError(
+                    "Either specify a scheduler in the config file or "
+                    "pass in the `lr_scheduler_callable` parameter when using `accelerate.utils.DummyScheduler`."
+                )
+
+        if optimizer is not None and scheduler is not None:
+            if isinstance(optimizer, (DummyOptim)) and not isinstance(scheduler, (DummyScheduler)):
+                raise ValueError(
+                    "You can only specify `accelerate.utils.DummyScheduler` in the code when using "
+                    "`accelerate.utils.DummyOptim`."
+                )
+
+        if model is not None:
+            # if the model is an MOE, set the appropriate MOE layers as leaf Z3 modules
+            deepspeed_plugin.set_moe_leaf_modules(model)
+            # deal with config keys that use `auto` value and rely on model's hidden_size
+            hidden_size_based_keys = [
+                "zero_optimization.reduce_bucket_size",
+                "zero_optimization.stage3_prefetch_bucket_size",
+                "zero_optimization.stage3_param_persistence_threshold",
+            ]
+            hidden_size_auto_keys = [x for x in hidden_size_based_keys if deepspeed_plugin.is_auto(x)]
+            if len(hidden_size_auto_keys) > 0:
+                reasoning = (
+                    "therefore it's not possible to automatically fill out the following `auto` entries "
+                    + f"in the DeepSpeed config file: {hidden_size_auto_keys}. You can fix that by replacing "
+                    + "`auto` values for these keys with an integer value of your choice."
+                )
+                if not hasattr(model, "config"):
+                    raise ValueError("Can't find `model.config` entry, " + reasoning)
+
+                if hasattr(model.config, "hidden_size"):
+                    hidden_size = model.config.hidden_size
+                elif hasattr(model.config, "hidden_sizes"):
+                    # if there are many hidden sizes pick the largest one
+                    hidden_size = max(model.config.hidden_sizes)
+                else:
+                    raise ValueError(
+                        "Can find neither `model.config.hidden_size` nor `model.config.hidden_sizes`, " + reasoning
+                    )
+
+                config_kwargs.update(
+                    {
+                        "zero_optimization.reduce_bucket_size": hidden_size * hidden_size,
+                        "zero_optimization.stage3_prefetch_bucket_size": int(0.9 * hidden_size * hidden_size),
+                        "zero_optimization.stage3_param_persistence_threshold": 10 * hidden_size,
+                    }
+                )
+
+            if isinstance(optimizer, (DummyOptim)):
+                config_kwargs.update(
+                    {"optimizer.params.lr": optimizer.lr, "optimizer.params.weight_decay": optimizer.weight_decay}
+                )
+            if isinstance(scheduler, (DummyScheduler)) and scheduler.lr_scheduler_callable is None:
+                max_lr = (
+                    getattr(scheduler.optimizer, "lr", None)
+                    if getattr(scheduler.optimizer, "defaults", None) is None
+                    else scheduler.optimizer.defaults["lr"]
+                )
+                config_kwargs.update(
+                    {
+                        "scheduler.params.warmup_min_lr": 0,
+                        "scheduler.params.warmup_max_lr": max_lr,
+                        "scheduler.params.warmup_num_steps": scheduler.warmup_num_steps,
+                    }
+                )
+                if scheduler.total_num_steps is not None:
+                    config_kwargs["scheduler.params.total_num_steps"] = (
+                        math.ceil(scheduler.total_num_steps / self.num_processes)
+                        if not self.split_batches
+                        else scheduler.total_num_steps
+                    )
+            deepspeed_plugin.deepspeed_config_process(must_match=False, **config_kwargs)
+            self.deepspeed_config = deepspeed_plugin.deepspeed_config
+            kwargs = {"model": model, "config_params": self.deepspeed_config}
+            if optimizer is not None:
+                if isinstance(optimizer, (DummyOptim)):
+                    kwargs["model_parameters"] = optimizer.params
+                    if isinstance(scheduler, (DummyScheduler)) and scheduler.lr_scheduler_callable is not None:
+                        kwargs["lr_scheduler"] = scheduler.lr_scheduler_callable
+                else:
+                    if self.deepspeed_config["zero_optimization"].get("offload_optimizer", {}).get(
+                        "device", "none"
+                    ) != "none" and self.deepspeed_config.get("zero_force_ds_cpu_optimizer", True):
+                        from deepspeed.ops.adam import DeepSpeedCPUAdam
+
+                        defaults = {k: v for k, v in optimizer.defaults.items() if k in ["lr", "weight_decay"]}
+                        optimizer = DeepSpeedCPUAdam(optimizer.param_groups, **defaults)
+                    kwargs["optimizer"] = optimizer
+                    if scheduler is not None:
+                        if type(scheduler).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES:
+                            kwargs["lr_scheduler"] = scheduler
+
+            HabanaArgs = make_dataclass("HabanaArgs", [("use_hpu", bool), ("no_cuda", bool)])
+            habana_args = HabanaArgs(
+                use_hpu=True if self.device.type == "hpu" else False,
+                no_cuda=True if self.device.type == "cpu" else False,
+            )
+            if habana_args.use_hpu:
+                # This env variable is initialized here to make sure it is set to "true"
+                # It should be done by the launcher but it does not work for multi-node runs
+                os.environ["DEEPSPEED_USE_HPU"] = "true"
+            engine, optimizer, _, lr_scheduler = deepspeed.initialize(**kwargs)
+            # torch.compile should be called if dynamo plugin backend is set and only if the model isn't already compiled.
+            if self.state.dynamo_plugin.backend != DynamoBackend.NO and not is_compiled_module(model):
+                compile_kwargs = self.state.dynamo_plugin.to_kwargs()
+                ###############################################################################################################
+                if self.use_regional_compilation:
+                    compile_regions_deepspeed(engine.module, **compile_kwargs)
+                else:
+                    engine.compile(
+                        backend=compile_kwargs.pop("backend"),
+                        compile_kwargs=compile_kwargs,
+                        compiled_autograd_enabled=self.compiled_autograd_enable,
+                    )
+                ###############################################################################################################
+            if optimizer is not None:
+                optimizer = DeepSpeedOptimizerWrapper(optimizer)
+            if scheduler is not None:
+                if lr_scheduler is None:
+                    scheduler = AcceleratedScheduler(
+                        scheduler,
+                        optimizer,
+                        step_with_optimizer=self.step_scheduler_with_optimizer,
+                        split_batches=self.split_batches,
+                    )
+                else:
+                    scheduler = DeepSpeedSchedulerWrapper(lr_scheduler, optimizer)
+
+            for i in range(len(result)):
+                if isinstance(result[i], torch.nn.Module):
+                    result[i] = engine
+                elif isinstance(result[i], (torch.optim.Optimizer, DummyOptim)):
+                    result[i] = optimizer
+                elif (isinstance(result[i], (LRScheduler, DummyScheduler))) or (
+                    type(result[i]).__name__ in deepspeed.runtime.lr_schedules.VALID_LR_SCHEDULES
+                ):
+                    result[i] = scheduler
+            # pointing for deepspeed_engine_wrapped.backward()
+            if self.deepspeed_engine_wrapped is None:
+                self.deepspeed_engine_wrapped = DeepSpeedEngineWrapper(engine)
+            else:
+                logger.warning(
+                    "A wrapped DeepSpeed engine reference is currently tied for this `Accelerator()` instance. "
+                    "If you want to call `accelerator.backward()` referencing a new model/engine, "
+                    "please create a separate `Accelerator()` instance and call `accelerator.prepare()` on it."
+                )
+            self._models.append(engine)
+            if optimizer is not None:
+                self._optimizers.append(optimizer)
+            if scheduler is not None:
+                self._schedulers.append(scheduler)
+        return tuple(result)
+
+    # TODO: Remove when accelerate supports Sequence/Context parallelism
     def prepare_data_loader(
         self, data_loader: torch.utils.data.DataLoader, device_placement=None, slice_fn_for_dispatch=None
     ):
