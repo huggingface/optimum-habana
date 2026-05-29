@@ -33,7 +33,7 @@ pip install -r requirements_lm_eval.txt
 
 Then, if you plan to use [DeepSpeed-inference](https://docs.habana.ai/en/latest/PyTorch/DeepSpeed/Inference_Using_DeepSpeed.html) (e.g. to use BLOOM/BLOOMZ), you should install DeepSpeed as follows:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.23.0
 ```
 
 
@@ -98,23 +98,6 @@ PT_HPU_LAZY_MODE=1 python run_generation.py \
 
 > The batch size should be larger than or equal to the number of prompts. Otherwise, only the first N prompts are kept with N being equal to the batch size.
 
-### Run Speculative Sampling on Gaudi
-
-If you want to generate a sequence of text from a prompt of your choice using assisted decoding, you can use the following command as an example:
-
-```bash
-PT_HPU_LAZY_MODE=1 python run_generation.py \
---model_name_or_path gpt2 \
---assistant_model distilgpt2 \
---batch_size 1 \
---max_new_tokens 100 \
---use_hpu_graphs \
---use_kv_cache \
---num_return_sequences 1 \
---temperature 0 \
---prompt "Alice and Bob" \
---sdp_on_bf16
-```
 
 ### Benchmark
 
@@ -145,21 +128,6 @@ PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_g
 --use_kv_cache \
 --max_new_tokens 100 \
 --sdp_on_bf16
-```
-
-To run Llama3-405B inference on 8 Gaudi3 cards use the following command:
-```bash
-PT_HPU_LAZY_MODE=1 ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 ENABLE_EXPERIMENTAL_FLAGS=1 \
-python ../gaudi_spawn.py --use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
---max_new_tokens 2048 \
---bf16 \
---use_hpu_graphs \
---use_kv_cache \
---batch_size 1 \
---do_sample \
---use_flash_attention \
---flash_attention_causal_mask
 ```
 
 To run Deepseek-R1-BF16 inference on 16 Gaudi3 cards (2 nodes) use the following command. Ensure you replace the hostfile parameter with the appropriate file. Sample hostfile reference [here](/examples/multi-node-training/hostfile)
@@ -232,77 +200,6 @@ PT_HPU_LAZY_MODE=1 python run_generation.py \
 
 > The prompt length is limited to 16 tokens. Prompts longer than this will be truncated.
 
-### Run mlcommons dataset
-You can also provide mlcommons dataset in pkl format as a `--mlcommons_dataset` argument to validate accuracy. Please make sure to set `--dataset_name` to `mlcommons` to enable this.
-
-This will generate mlperf submission format file named `accuracy.json` in path provided in `--output_dir`
-
-Script was validated on mlperf Mixtral [dataset](https://github.com/mlcommons/inference/tree/v5.0/language/mixtral-8x7b#using-wget-1)
-
-```bash
-PT_HPU_LAZY_MODE=1 python3 run_generation.py \
---model_name_or_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
---use_hpu_graphs \
---limit_hpu_graphs   \
---use_kv_cache \
---bucket_size 128 \
---max_new_tokens 1024  \
---max_input_tokens 2048  \
---batch_size 8 \
---bf16 \
---reuse_cache \
---bucket_internal \
---mlcommons_dataset <path to mlcommons dataset pickle file> \
---dataset_name mlcommons \
---n_iterations 1 \
---warmup 1 \
---output_dir .
-```
-
-### MLCommons dataset evaluation
-
-#### Setup environment and prepare necessary files to run evaluation
-1. Download dataset.
-```bash
-wget https://inference.mlcommons-storage.org/mixtral_8x7b/09292024_mixtral_15k_mintoken2_v1.pkl
-```
-2. Download and install python requirements.
-```bash
-wget https://raw.githubusercontent.com/mlcommons/inference/v5.0/language/mixtral-8x7b/requirements.txt -O requirements_evaluation.txt && pip install -r requirements_evaluation.txt
-```
-3. Install mbxp dataset dependencies.
-```bash
-cd mbxp_evaluation
-./setup.sh
-PS1=1 source ~/.bashrc
-```
-
-4. Download evaluation scripts.
-```bash
-wget https://raw.githubusercontent.com/mlcommons/inference/refs/tags/v5.0/language/mixtral-8x7b/evaluate-accuracy.py
-wget https://raw.githubusercontent.com/mlcommons/inference/refs/tags/v5.0/language/mixtral-8x7b/evaluate_mbxp.py
-```
-
-#### Run evaluation script with accuracy.json
-```bash
-python evaluate-accuracy.py --checkpoint-path <path to model> --mlperf-accuracy-file <path to accuracy.json> --dataset-file <path to dataset> --verbose
-```
-
-#### Example results
-```bash
-{
-    'rouge1': 45.4708,
-    'rouge2': 23.2887,
-    'rougeL': 30.3478,
-    'rougeLsum': 42.4501,
-    'gsm8k': 74.16,
-    'mbxp': 60.36,
-    'gen_len': 4243067,
-    'gen_num': 15000,
-    'gen_tok_len': 2808861,
-    'tokens_per_sample': 187.3
-}
-```
 
 ### Use PEFT models for generation
 
@@ -468,47 +365,6 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python .
 --flash_attention_causal_mask
 ```
 
-Here is an example to measure the tensor quantization statistics on Llama3-405B with 8 cards:
-> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure_include_outputs.json python ../gaudi_spawn.py \
---use_deepspeed --world_size 8 run_lm_eval.py \
--o acc_llama3_405b_bs1_quant.txt \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---reuse_cache \
---use_flash_attention \
---flash_attention_recompute \
---flash_attention_causal_mask \
---trust_remote_code
-
-python quantization_tools/postprocess_measurements.py -m hqt_output
-```
-
-Here is an example to quantize the model based on previous measurements for Llama3-405B with 8 cards:
-> Please note that Llama3-405B requires minimum 16 cards Gaudi2 and 8 cards Gaudi3.
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python ../gaudi_spawn.py \
---use_deepspeed --world_size 8 run_generation.py \
---model_name_or_path meta-llama/Llama-3.1-405B-Instruct \
---use_hpu_graphs \
---use_kv_cache \
---limit_hpu_graphs \
---max_input_tokens 2048 \
---max_new_tokens 2048 \
---batch_size 2 \
---bf16 \
---reuse_cache \
---trim_logits \
---use_flash_attention \
---flash_attention_recompute \
---flash_attention_causal_mask
-```
-
 Here is an example to measure the tensor quantization statistics on Llama3-8b with 1 card:
 
 ```bash
@@ -540,35 +396,6 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python r
 --reuse_cache
 ```
 
-Here is an example to measure the tensor quantization statistics on gemma with 1 card:
-
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_measure.json python run_generation.py \
---model_name_or_path google/gemma-7b \
---use_hpu_graphs \
---use_kv_cache \
---max_new_tokens 100 \
---batch_size 1 \
---reuse_cache \
---bf16 \
---sdp_on_bf16
-
-python quantization_tools/postprocess_measurements.py -m hqt_output
-```
-
-Here is an example to quantize the model based on previous measurements for gemma with 1 card:
-```bash
-PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant_gemma.json python run_generation.py \
---model_name_or_path google/gemma-7b \
---use_hpu_graphs \
---use_kv_cache \
---max_new_tokens 100 \
---batch_size 1 \
---reuse_cache \
---bf16 \
---sdp_on_bf16
-```
-
 Here is an example for running DeepSeek-R1 FP8 dynamic quantization without INC on 8-cards.
 ```bash
 PT_HPU_LAZY_MODE=1 python3  ../gaudi_spawn.py  --world_size 8 \
@@ -578,7 +405,7 @@ PT_HPU_LAZY_MODE=1 python3  ../gaudi_spawn.py  --world_size 8 \
     --trust_remote_code_tokenizer  --parallel_strategy "ep"
 ```
 
-Here is an example to measure the tensor quantization statistics for static quantization 
+Here is an example to measure the tensor quantization statistics for static quantization
 with INC on DeepSeek-R1 with 8 cards:
 ```bash
 PT_HPU_LAZY_MODE=1 QUANT_CONFIG=quantization_config/maxabs_measure_deepseek_fp8.json python3  ../gaudi_spawn.py  --world_size 8 \
@@ -676,28 +503,6 @@ PT_HPU_LAZY_MODE=1 QUANT_CONFIG=./quantization_config/maxabs_quant.json python .
 
 > [!NOTE]
 > For multi-card usage, the number of cards loaded and used needs to be kept consistent with that when saving.
-
-### Loading FP8 Checkpoints from Hugging Face
-You can load pre-quantized FP8 models using the `--load_quantized_model_with_inc` argument. The `model_name_or_path` should be a model name from [Neural Magic](https://huggingface.co/collections/neuralmagic/fp8-llms-for-vllm-666742ed2b78b7ac8df13127) or a path to FP8 Checkpoints saved in Hugging Face format.
-
-Below is an example of how to load `neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8` on two cards.
-```bash
-PT_HPU_LAZY_MODE=1 python ../gaudi_spawn.py \
---use_deepspeed --world_size 2 run_lm_eval.py \
--o acc_load_fp8_model.txt \
---model_name_or_path neuralmagic/Meta-Llama-3.1-70B-Instruct-FP8 \
---use_hpu_graphs \
---use_kv_cache \
---trim_logits \
---batch_size 1 \
---bf16 \
---use_flash_attention \
---flash_attention_recompute \
---attn_softmax_bf16 \
---bucket_size=128 \
---bucket_internal \
---load_quantized_model_with_inc
-```
 
 ### Loading 4 Bit Checkpoints from Hugging Face
 
@@ -855,13 +660,7 @@ pip install -r requirements_lm_eval.txt
 ```
 
 > [!NOTE]
-> Please add the flags for following models to improve accuracy when using lm_eval on gaudi2. Please note this is a workaround for 1.20 release only.
->
-> ENABLE_LB_BUNDLE_ALL_COMPUTE_MME=0 COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for llama-2-70b-hf[PTQ fp8]
->
-> COMPLEXGUID_DISABLE_RMS_NORM=true ENABLE_EXPERIMENTAL_FLAGS=true for Llama-3.1-70B-Instruct[PTQ fp8] and llama-2-70b-hf[bf16]
->
-> For lm-eval tasks that still rely on dataset scripts, use a separate env with datasets 3.x or switch to Parquet/Arrow variants. This repo requires datasets>=4.0.0.
+> The example requirements in this repo install `lm-eval==0.4.11` together with `datasets>=4.8.4`.
 
 The argument --system_instruction adds a system message to the beginning of the prompt.
 This instruction is treated as part of the input context and can influence how the model interprets the task or responds.

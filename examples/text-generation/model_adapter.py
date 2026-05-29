@@ -25,14 +25,19 @@ import torch
 import torch.nn.functional as F
 from lm_eval.api.instance import Instance
 from lm_eval.models.huggingface import HFLM, TemplateLM
-from lm_eval.models.utils import get_dtype
+
+
+try:
+    from lm_eval.models.utils_hf import get_dtype, stop_sequences_criteria
+except ImportError:
+    from lm_eval.models.utils import get_dtype, stop_sequences_criteria
 
 # Local imports
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.generation import GenerationConfig
 
 
-eval_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class HabanaModelAdapter(HFLM):
@@ -100,7 +105,7 @@ class HabanaModelAdapter(HFLM):
         )
         if "gemma" in getattr(self._config, "model_type", ""):
             self.add_bos_token = True
-            eval_logger.info(
+            logger.info(
                 f"Model type is '{self._config.model_type}', part of the Gemma family--a BOS token will be used as Gemma underperforms without it."
             )
         self.batch_size_per_gpu = int(args.batch_size)
@@ -177,16 +182,12 @@ class HabanaModelAdapter(HFLM):
         self._max_length = value
 
     def find_bucket(self, length: int, key=lambda b, length: b >= length) -> int:
-        """
-        Find the smallest bucket >= length, or add a new one.
-        """
         for b in self.buckets:
             if key(b, length):
                 return b
         new_bucket = length
         self.buckets.append(new_bucket)
         self.buckets.sort()
-        eval_logger.info(f"Added new bucket: {new_bucket}. Buckets are now: {self.buckets}")
         return new_bucket
 
     def _model_call(self, inps: torch.Tensor) -> torch.Tensor:
@@ -199,11 +200,13 @@ class HabanaModelAdapter(HFLM):
             padding_length = bucket_length - seq_length
             pad_token_id = getattr(self._model.config, "pad_token_id", 0)
             inps = F.pad(inps, (0, padding_length), value=pad_token_id)
-            eval_logger.debug(f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})")
+            logger.debug(f"Padded input from {seq_length} to {bucket_length} (pad={padding_length})")
         logits = self._model(inps.to(self.device), **self.model_inputs)["logits"]
 
         if self.options.static_shapes and padding_length > 0:
             logits = logits[:, :-padding_length, :]
+        logits = logits.to(torch.float32)
+
         return logits
 
     def generate_until(self, requests: list[Instance], disable_tqdm: bool = False) -> list[str]:
@@ -219,7 +222,7 @@ class HabanaModelAdapter(HFLM):
 
     def _model_generate(
         self,
-        context: torch.Tensor,
+        context,
         max_length: int,
         stop: list[str],
         **generation_kwargs: dict[str, Any],
@@ -228,12 +231,21 @@ class HabanaModelAdapter(HFLM):
         Patched method
         source: https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.9.1/lm_eval/models/huggingface.py#L951
         """
+        # temperature = 0.0 if not set
+        # if do_sample is false and temp==0.0:
+        # remove temperature, as do_sample=False takes care of this
+        # and we don't want a warning from HF
         generation_kwargs["temperature"] = generation_kwargs.get("temperature", 0.0)
         do_sample = generation_kwargs.get("do_sample")
+        # The temperature has to be a strictly positive float -- if it is 0.0, use greedy decoding strategies
         if generation_kwargs.get("temperature") == 0.0 and do_sample is None:
             generation_kwargs["do_sample"] = do_sample = False
+
         if do_sample is False and generation_kwargs.get("temperature") == 0.0:
             generation_kwargs.pop("temperature")
+        # build stopping criteria
+        stopping_criteria = stop_sequences_criteria(self.tokenizer, stop, context.shape[1], context.shape[0])
+        # to avoid graph recompilation
         if self.options.static_shapes:
             self.options.bucket_internal = True
             bucket_length = self.find_bucket(context.shape[1])
@@ -247,16 +259,17 @@ class HabanaModelAdapter(HFLM):
                     generation_kwargs["attention_mask"], (0, padding_length), value=0
                 )
         # move context & attention_mask to hpu
-        context = context.to(self.device)
-        generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to(self.device)
+        context = context.to("hpu")
+        generation_kwargs["attention_mask"] = generation_kwargs["attention_mask"].to("hpu")
         with torch.autocast(
-            device_type=self.device,
+            device_type="hpu",
             dtype=self.mixed_precision_dtype,
             enabled=self.mixed_precision_dtype is not None,
         ):
             return self.model.generate(
                 input_ids=context,
                 max_new_tokens=max_gen_toks,
+                stopping_criteria=stopping_criteria,
                 pad_token_id=self.tokenizer.pad_token_id,
                 use_cache=True,
                 hpu_graphs=self.hpu_graphs,

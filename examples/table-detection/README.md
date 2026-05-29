@@ -22,7 +22,7 @@ This folder contains an example for using the [Table Transformer](https://huggin
 
 First, you should install the requirements:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt --no-deps
 ```
 
 ## Single HPU Inference

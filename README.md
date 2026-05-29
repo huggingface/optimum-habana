@@ -48,7 +48,7 @@ Please refer to the Intel Gaudi AI Accelerator official [installation guide](htt
 > Tests should be run in a Docker container based on Intel Gaudi's official images. Instructions to
 > obtain the latest containers from the Intel Gaudi Vault are available
 > [here](https://docs.habana.ai/en/latest/Installation_Guide/Additional_Installation/Docker_Installation.html#use-intel-gaudi-containers).
-> The current Optimum for Intel Gaudi has been validated with Intel Gaudi v1.22 stack.
+> The current Optimum for Intel Gaudi has been validated with Intel Gaudi v1.24 stack.
 
 
 ## Install the library and get example scripts
@@ -65,9 +65,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 ```bash
 git clone https://github.com/huggingface/optimum-habana
-cd optimum-habana && git checkout v1.19.1
+cd optimum-habana && git checkout v1.21.0
 ```
-with `v1.19.1` being the latest Optimum for Intel Gaudi release version.
+with `v1.21.0` being the latest Optimum for Intel Gaudi release version.
 
 ### Option 2: Use the latest main branch under development
 
@@ -95,7 +95,7 @@ git clone -b transformers_future https://github.com/huggingface/optimum-habana
 
 To use DeepSpeed on HPUs, you also need to run the following command:
 ```bash
-pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.22.0
+pip install git+https://github.com/HabanaAI/DeepSpeed.git@1.23.0
 ```
 
 To install the requirements for every example:
@@ -339,3 +339,25 @@ The list of validated models through continuous integration tests is posted [her
 ## Development
 
 Check the [contributor guide](https://github.com/huggingface/optimum/blob/main/CONTRIBUTING.md) for instructions.
+
+## Known Issues
+
+### bitsandbytes compatibility issues with PyTorch >= 2.10
+
+Users running `PyTorch>=2.10` with bitsandbytes may encounter issues depending on the bitsandbytes version in use. This is an upstream problem tracked at https://github.com/bitsandbytes-foundation/bitsandbytes/issues/1904 and is not specific to Intel Gaudi and Optimum-Habana.
+
+#### bitsandbytes >= 0.50: degraded performance with `torch.compile`
+
+When running quantized workloads with `bitsandbytes>=0.50` and `torch.compile` on `PyTorch>=2.10`, performance may regress.
+
+- **Workarounds**:
+  - Run without `torch.compile`.
+  - Pin `bitsandbytes==0.49.2` and reduce batch size (see caveat below).
+
+#### bitsandbytes < 0.50: increased memory usage due to graph breaks
+
+When running quantized workloads with `bitsandbytes<0.50` (e.g. `bitsandbytes==0.49.2`) on `PyTorch>=2.10`, graph breaks may occur and cause increased memory consumption.
+
+- **Workarounds**:
+  - Run without `torch.compile`.
+  - Reduce batch size.

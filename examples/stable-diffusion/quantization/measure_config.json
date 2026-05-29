@@ -1,0 +1,6 @@
+{
+    "method": "HOOKS",
+    "mode": "MEASURE",
+    "observer": "maxabs",
+    "dump_stats_path": "./quantization/measure/fp8"
+}

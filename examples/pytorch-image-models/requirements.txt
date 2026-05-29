@@ -1,2 +1,16 @@
 timm
 datasets>=4.0.0
+
+# dependencies for datasets
+dill<0.4.1,>=0.3.0
+multiprocess<0.70.19
+xxhash
+httpx
+pyarrow
+
+# dependencies for httpx
+anyio
+httpcore
+
+# dependencies for httpcore
+h11

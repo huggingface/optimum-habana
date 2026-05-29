@@ -14,7 +14,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-1gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -37,7 +37,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-8gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -62,7 +62,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-8gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -87,7 +87,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-8gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -112,7 +112,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-8gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -138,7 +138,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-1gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -165,7 +165,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-8gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -190,7 +190,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-1gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none
@@ -213,7 +213,7 @@ jobs:
     runs-on:
       group: itac-bm-emr-gaudi3-dell-1gaudi
     container:
-      image: docker://vault.habana.ai/gaudi-docker/1.22.0/ubuntu22.04/habanalabs/pytorch-installer-2.7.1:latest
+      image: docker://vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest
       options: --workdir=/root/workspace --runtime=habana --shm-size=64G --env HABANA_VISIBLE_DEVICES --env HABANA_VISIBLE_MODULES
       env:
         OMPI_MCA_btl_vader_single_copy_mechanism: none

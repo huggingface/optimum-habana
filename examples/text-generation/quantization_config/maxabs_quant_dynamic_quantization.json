@@ -1,0 +1,13 @@
+{
+    "mode": "QUANTIZE",
+    "scale_method": "ACT_MAXABS_PCS_POW2_WEIGHT_MAXABS_PTS_POW2_HW",
+    "scale_format": "CONST",
+    "allowlist": {
+        "types": [],
+        "names": [
+            "mlp"
+        ]
+    },
+    "dynamic_quantization": "True",
+    "dump_stats_path": "./hqt_output/measure"
+}

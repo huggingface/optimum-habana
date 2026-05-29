@@ -1,1 +1,4 @@
 timm
+huggingface-hub
+pyyaml
+safetensors

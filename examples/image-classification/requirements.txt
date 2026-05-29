@@ -1,6 +1,25 @@
-torch>=1.5.0
-torchvision>=0.6.0
+torch >= 1.5.0
+torchvision >= 0.6.0
 datasets>=4.0.0
-evaluate
+evaluate == 0.4.3
 scikit-learn == 1.5.2
 timm>=0.9.16
+
+# dependencies for evaluate and datasets
+dill<0.4.1,>=0.3.0
+multiprocess<0.70.19
+xxhash
+httpx
+pyarrow
+
+# dependencies for httpx
+anyio
+httpcore
+
+# dependencies for httpcore
+h11
+
+# dependencies for timm
+huggingface-hub
+pyyaml
+safetensors

@@ -209,8 +209,8 @@ def _test_text_generation(
     num_beams: int = 1,
     num_return_sequences: int = 1,
     check_output: bool = False,
-    use_flex_attention: bool = False,
     regional_compile: bool = False,
+    use_flex_attention: bool = False,
 ):
     command = ["python3"]
     path_to_example_dir = Path(__file__).resolve().parent.parent / "examples"
