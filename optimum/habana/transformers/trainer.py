@@ -2685,7 +2685,7 @@ class GaudiTrainer(Trainer):
             "deepspeed_plugins": self.args.deepspeed_plugin,
             # OH specific
             "distribution_strategy": self.args.distribution_strategy,
-            "compiled_autograd_enabled": self.args.use_compiled_autograd,
+            # "compiled_autograd_enabled": self.args.use_compiled_autograd,
         }
         # tp is initialized at Accelerator init phase so
         # args should be prepared here

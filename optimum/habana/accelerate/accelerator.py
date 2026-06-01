@@ -601,7 +601,7 @@ class GaudiAccelerator(Accelerator):
                     engine.compile(
                         backend=compile_kwargs.pop("backend"),
                         compile_kwargs=compile_kwargs,
-                        compiled_autograd_enabled=self.compiled_autograd_enable,
+                        # compiled_autograd_enabled=self.compiled_autograd_enable,
                     )
                 ###############################################################################################################
             if optimizer is not None:
