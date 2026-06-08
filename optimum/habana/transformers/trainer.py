@@ -1479,7 +1479,8 @@ class GaudiTrainer(Trainer):
 
         with safe_globals():
             check_torch_load_is_safe()
-            checkpoint_rng_state = torch.load(rng_file, weights_only=True)
+            # `weights_only` is set to False because `_get_allowed_globals` in habana_frameworks/torch/utils/_weights_only_unpickler.py doesn't get updated by `safe_globals()`
+            checkpoint_rng_state = torch.load(rng_file, weights_only=False)
         random.setstate(checkpoint_rng_state["python"])
         np.random.set_state(checkpoint_rng_state["numpy"])
         torch.random.set_rng_state(checkpoint_rng_state["cpu"])
