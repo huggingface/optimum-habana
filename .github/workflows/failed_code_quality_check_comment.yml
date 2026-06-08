@@ -15,7 +15,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Download artifact
-        uses: dawidd6/action-download-artifact@bf251b5aa9c2f7eeb574a96ee720e24f801b7c11  # v6
+        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151  # v21
         with:
           name: pr-number
           run_id: ${{github.event.workflow_run.id }}
@@ -30,7 +30,7 @@ jobs:
             echo "Encountered an invalid PR number"
             exit 1
           fi
-      - uses: peter-evans/create-or-update-comment@v4
+      - uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ steps.github-context.outputs.pr_number }}
           body: The code quality check failed, please run `make style`.
