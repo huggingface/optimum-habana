@@ -25,7 +25,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         run: /bin/bash tests/ci/example_diff_tests.sh
 
@@ -48,7 +48,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         env:
           TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
@@ -73,7 +73,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         env:
           TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
@@ -98,7 +98,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         env:
           TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
@@ -123,7 +123,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         env:
           TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
@@ -149,7 +149,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         env:
           TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
@@ -176,7 +176,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         env:
           TEXT_GENERATION_CI_HUB_TOKEN: ${{ secrets.TEXT_GENERATION_CI_HUB_TOKEN }}
@@ -201,7 +201,7 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Run tests
         run: /bin/bash tests/ci/slow_tests_trl.sh
 
@@ -224,11 +224,11 @@ jobs:
           echo "HABANA_VISIBLE_DEVICES=${HABANA_VISIBLE_DEVICES}"
           echo "HABANA_VISIBLE_MODULES=${HABANA_VISIBLE_MODULES}"
       - name: Checkout Optimum Habana
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
       - name: Install optimum-habana and run tests
         run: make slow_tests_sentence_transformers
       - name: Checkout Sentence Transformers
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
         with:
           repository: 'UKPLab/sentence-transformers'
       - name: Install sentence-transformers and run tests
