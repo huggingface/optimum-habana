@@ -15,7 +15,7 @@ jobs:
       COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
       PR_NUMBER: ${{ github.event.number }}
       EVENT_CONTEXT: ${{ toJSON(github.event) }}
-      PR_CLONE_URL: ${{ github.event.pull_request.head.repo.clone_url }}
+      PR_CLONE_URL: ${{ github.event.pull_request.head.repository }}
 
     steps:
       - uses: actions/checkout@v7
