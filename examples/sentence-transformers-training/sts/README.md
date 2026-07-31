@@ -76,11 +76,13 @@ from datasets import Dataset
 sentence1_list = ["My first sentence", "Another pair"]
 sentence2_list = ["My second sentence", "Unrelated sentence"]
 labels_list = [0.8, 0.3]
-train_dataset = Dataset.from_dict({
-    "sentence1": sentence1_list,
-    "sentence2": sentence2_list,
-    "label": labels_list,
-})
+train_dataset = Dataset.from_dict(
+    {
+        "sentence1": sentence1_list,
+        "sentence2": sentence2_list,
+        "label": labels_list,
+    }
+)
 # => Dataset({
 #     features: ['sentence1', 'sentence2', 'label'],
 #     num_rows: 2

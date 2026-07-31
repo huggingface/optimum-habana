@@ -19,6 +19,7 @@ import os
 import random
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from functools import partial
@@ -116,6 +117,29 @@ PATH_SAMPLE_TEXT = f"{get_tests_dir()}/resource/sample_text.txt"
 
 
 adapt_transformers_to_gaudi()
+
+
+def _ensure_torchvision_video_reader_compat():
+    """
+    Work around torchvision builds that expose torchvision.io without VideoReader.
+    datasets' torch formatter imports VideoReader when torchvision is already loaded.
+    """
+    if "torchvision" not in sys.modules:
+        return
+
+    try:
+        import torchvision.io as torchvision_io
+    except ImportError:
+        return
+
+    if hasattr(torchvision_io, "VideoReader"):
+        return
+
+    class _UnavailableVideoReader:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("torchvision.io.VideoReader is not available in this torchvision build")
+
+    torchvision_io.VideoReader = _UnavailableVideoReader
 
 
 class StoreLossCallback(TrainerCallback):
@@ -713,6 +737,7 @@ class GaudiTrainerIntegrationPrerunTest(TestCasePlus, GaudiTrainerIntegrationCom
             self.check_trained_model(trainer.model)
 
             # Can return tensors.
+            _ensure_torchvision_video_reader_compat()
             train_dataset = train_dataset.with_format("torch")
             model = RegressionModel()
             trainer = GaudiTrainer(model, gaudi_config, args, train_dataset=train_dataset)

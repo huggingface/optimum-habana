@@ -35,6 +35,7 @@ pip install -r requirements.txt
 **Recommended (datasets>=4.0.0):** use the COCO captions dataset hosted on the Hub. It provides image–caption pairs and does **not** require `trust_remote_code`:
 ```python
 import datasets
+
 ds = datasets.load_dataset("regisss/coco_2017", split="train")
 ```
 This dataset exposes at least the columns `image` (PIL image) and `caption` (string).
@@ -51,16 +52,9 @@ The `VisionTextDualEncoderModel` class lets you load any vision and text encoder
 Here is an example of how to load the model using pre-trained vision and text models.
 
 ```python
-from transformers import (
-    VisionTextDualEncoderModel,
-    VisionTextDualEncoderProcessor,
-    AutoTokenizer,
-    AutoImageProcessor
-)
+from transformers import VisionTextDualEncoderModel, VisionTextDualEncoderProcessor, AutoTokenizer, AutoImageProcessor
 
-model = VisionTextDualEncoderModel.from_vision_text_pretrained(
-    "openai/clip-vit-base-patch32", "roberta-base"
-)
+model = VisionTextDualEncoderModel.from_vision_text_pretrained("openai/clip-vit-base-patch32", "roberta-base")
 
 tokenizer = AutoTokenizer.from_pretrained("roberta-base")
 image_processor = AutoImageProcessor.from_pretrained("openai/clip-vit-base-patch32")
