@@ -87,6 +87,19 @@ def test_custom_module_is_allowed_when_trusted(evil_repo):
     assert marker.exists()
 
 
+@pytest.mark.parametrize("truthy_non_true", ["False", "0", 1, "true"])
+def test_only_literal_true_enables_trust(evil_repo, truthy_non_true):
+    """Only the literal `True` may enable remote code - any other truthy value must be refused."""
+    repo, marker, module_file = evil_repo
+
+    from diffusers import DiffusionPipeline
+
+    with pytest.raises(Exception):  # noqa: PT011 - repo does not exist; the guard must fire first
+        DiffusionPipeline.from_pretrained(str(repo), trust_remote_code=truthy_non_true)
+
+    assert not marker.exists()
+
+
 def test_trust_scope_does_not_leak_across_threads(evil_repo):
     """A ContextVar (not a module global) is required for concurrent pipeline loads."""
     _repo, marker, _module_file = evil_repo

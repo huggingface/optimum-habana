@@ -61,7 +61,8 @@ def _with_trust_remote_code_scope(original):
 
     @functools.wraps(original)
     def wrapper(cls, *args, **kwargs):
-        token = _trust_remote_code.set(bool(kwargs.get("trust_remote_code", False)))
+        # Fail closed on anything but the literal `True` (e.g. `"False"` or `1` must not enable it).
+        token = _trust_remote_code.set(kwargs.get("trust_remote_code", False) is True)
         try:
             return original(cls, *args, **kwargs)
         finally:
