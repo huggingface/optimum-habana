@@ -335,6 +335,7 @@ from .models import (
 )
 from .models.deepseek_v2.modeling_deepseek_v2 import DeepseekV2ForCausalLM as GaudiDeepseekV2ForCausalLM
 from .quantizers.quantizer_finegrained_fp8 import GaudiFineGrainedFP8HfQuantizer
+from .security_patches import apply_transformers_security_patches
 
 
 def adapt_transformers_to_gaudi():
@@ -342,6 +343,8 @@ def adapt_transformers_to_gaudi():
     Replaces some Transformers' methods for equivalent methods optimized
     for Gaudi.
     """
+    apply_transformers_security_patches()
+
     ALL_ATTENTION_FUNCTIONS.register("gaudi_fused_sdpa", gaudi_fused_sdpa_attention_forward)
 
     # models that support symbolic tracing should be added to this list
