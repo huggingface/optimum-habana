@@ -37,3 +37,7 @@ from .schedulers import (
     GaudiEulerDiscreteScheduler,
     GaudiFlowMatchEulerDiscreteScheduler,
 )
+from .security_patches import apply_diffusers_security_patches
+
+
+apply_diffusers_security_patches()
