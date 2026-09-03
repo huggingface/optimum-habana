@@ -2,7 +2,7 @@
 > # coding=utf-8
 28,29d28
 < from datasets import load_dataset
-< 
+<
 30a30
 > from datasets import load_dataset
 39,40d38
@@ -13,27 +13,27 @@
 47a45,54
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-> 
+>
+>
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 49,50c56,61
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 < check_min_version("4.52.0.dev0")
 ---
-> 
+>
 > logger = logging.getLogger(__name__)
-> 
+>
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.51.0")
-> check_optimum_habana_min_version("1.21.0")
+> check_optimum_habana_min_version("1.21.1")
 66,67d76
 < logger = logging.getLogger(__name__)
-< 
+<
 142a152,155
 >     problem_type: Optional[str] = field(
 >         default="single_label_classification",
@@ -55,7 +55,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
-> 
+>
 250a275
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 252,253c277,279
@@ -72,7 +72,7 @@
 >         if not model.config.pad_token_id and not tokenizer.pad_token:
 >             tokenizer.pad_token = tokenizer.eos_token
 >             model.config.pad_token_id = tokenizer.eos_token_id
-> 
+>
 527c559
 <     trainer = Trainer(
 ---
@@ -80,8 +80,8 @@
 528a561
 >         gaudi_config=gaudi_config,
 628,632d660
-< 
-< 
+<
+<
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()

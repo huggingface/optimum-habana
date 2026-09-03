@@ -2,7 +2,7 @@
 > # coding=utf-8
 29,30d29
 < from datasets import load_dataset
-< 
+<
 31a31
 > from datasets import load_dataset
 43,44c43
@@ -24,17 +24,17 @@
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-> 
+>
 59a64,69
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.51.0")
-> check_optimum_habana_min_version("1.21.0")
-> 
+> check_optimum_habana_min_version("1.21.1")
+>
 > require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
-> 
+>
 61c71,78
 < MULTILINGUAL_TOKENIZERS = [MBartTokenizer, MBartTokenizerFast, MBart50Tokenizer, MBart50TokenizerFast, M2M100Tokenizer]
 ---
@@ -71,7 +71,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
-> 
+>
 295a329
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 297,298c331,333
@@ -94,8 +94,8 @@
 595a632
 >         gaudi_config=gaudi_config,
 688,692d724
-< 
-< 
+<
+<
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()

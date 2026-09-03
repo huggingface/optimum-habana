@@ -65,9 +65,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 ```bash
 git clone https://github.com/huggingface/optimum-habana
-cd optimum-habana && git checkout v1.21.0
+cd optimum-habana && git checkout v1.21.1
 ```
-with `v1.21.0` being the latest Optimum for Intel Gaudi release version.
+with `v1.21.1` being the latest Optimum for Intel Gaudi release version.
 
 ### Option 2: Use the latest main branch under development
 
@@ -341,23 +341,23 @@ The list of validated models through continuous integration tests is posted [her
 Check the [contributor guide](https://github.com/huggingface/optimum/blob/v1.20-release/CONTRIBUTING.md) for instructions.
 
 ## Known Issues
- 
+
 ### bitsandbytes compatibility issues with PyTorch >= 2.10
- 
+
 Users running `PyTorch>=2.10` with bitsandbytes may encounter issues depending on the bitsandbytes version in use. This is an upstream problem tracked at https://github.com/bitsandbytes-foundation/bitsandbytes/issues/1904 and is not specific to Intel Gaudi and Optimum-Habana.
- 
+
 #### bitsandbytes >= 0.50: degraded performance with `torch.compile`
- 
+
 When running quantized workloads with `bitsandbytes>=0.50` and `torch.compile` on `PyTorch>=2.10`, performance may regress.
- 
+
 - **Workarounds**:
   - Run without `torch.compile`.
   - Pin `bitsandbytes==0.49.2` and reduce batch size (see caveat below).
- 
+
 #### bitsandbytes < 0.50: increased memory usage due to graph breaks
- 
+
 When running quantized workloads with `bitsandbytes<0.50` (e.g. `bitsandbytes==0.49.2`) on `PyTorch>=2.10`, graph breaks may occur and cause increased memory consumption.
- 
+
 - **Workarounds**:
   - Run without `torch.compile`.
   - Reduce batch size.

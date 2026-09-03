@@ -20,7 +20,7 @@ except ImportError:
 
 
 check_min_version("4.55.0")
-check_optimum_habana_min_version("1.21.0")
+check_optimum_habana_min_version("1.21.1")
 
 # Setup logging
 logging.basicConfig(
