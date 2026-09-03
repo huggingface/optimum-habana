@@ -5,14 +5,14 @@
 > # Copyright 2022 The HuggingFace Inc. team. All rights reserved.
 16,18c17,18
 < Fine-tuning the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
-< 
+<
 < Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 ---
 > Training the library models for causal language modeling (GPT, GPT-2, CTRL, ...) on a text file or a dataset.
 > Here is the full list of checkpoints on the hub that can be trained by this script:
 34,35d33
 < from datasets import load_dataset
-< 
+<
 36a35
 > from datasets import load_dataset
 44,45d42
@@ -33,17 +33,17 @@
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-> 
+>
 62a64,69
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.51.0")
-> check_optimum_habana_min_version("1.21.0")
-> 
+> check_optimum_habana_min_version("1.21.1")
+>
 > require_version("datasets>=4.0.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
-> 
+>
 78c85,86
 <                 "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
 ---
@@ -92,7 +92,7 @@
 194c237,238
 <     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
 ---
-> 
+>
 >     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode."})
 220a265,267
 >     save_last_ckpt: bool = field(
@@ -109,7 +109,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
-> 
+>
 272a327
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 274,275c329,331
@@ -125,13 +125,13 @@
 >     # Note that chatglm2/3 has float16 dtype from config.json, and on Gaudi we need to use bfloat16.
 >     if config.model_type == "chatglm":
 >         config.torch_dtype = torch.bfloat16
-> 
+>
 425a487,491
 >         # workaraund for https://github.com/huggingface/transformers/issues/36258
 >         # TODO: remove after fix is avalible in a release version of `transformers``
 >         if torch_dtype is None:
 >             torch_dtype = getattr(config, "torch_dtype", None)
-> 
+>
 444,446c510,522
 <     embedding_size = model.get_input_embeddings().weight.shape[0]
 <     if len(tokenizer) > embedding_size:
@@ -142,7 +142,7 @@
 >         embedding_size = model.get_input_embeddings().weight.shape[0]
 >         if len(tokenizer) > embedding_size:
 >             model.resize_token_embeddings(len(tokenizer))
-> 
+>
 >     # We need to add these fused kernels config
 >     if model_args.attn_softmax_bf16:
 >         model.generation_config.attn_softmax_bf16 = True
@@ -151,12 +151,12 @@
 >         model.generation_config.flash_attention_recompute = model_args.flash_attention_recompute
 >         model.generation_config.flash_attention_causal_mask = model_args.flash_attention_causal_mask
 485a562
-> 
+>
 549a627,630
-> 
+>
 >         def tensor_mapper(x):
 >             return {i: torch.tensor(x[i], dtype=torch.int32) for i in x}
-> 
+>
 552a634,635
 >         if training_args.resume_from_checkpoint is not None and training_args.resume_from_checkpoint != "":
 >             train_dataset = train_dataset.map(tensor_mapper)
@@ -193,7 +193,7 @@
 >             )
 >             metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 621d706
-< 
+<
 624,625c709,714
 <         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 <         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
@@ -203,10 +203,10 @@
 >                 data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
 >             )
 >             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-> 
+>
 648,652d736
-< 
-< 
+<
+<
 < def _mp_fn(index):
 <     # For xla_spawn (TPUs)
 <     main()

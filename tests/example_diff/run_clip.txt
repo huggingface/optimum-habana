@@ -1,13 +1,13 @@
 1a2
 > # coding=utf-8
 17d17
-< 
+<
 31a32
 > import transformers
 32a34
 > from habana_dataloader_trainer import HabanaDataloaderTrainer
 37,38d38
-< 
+<
 < import transformers
 44,46d43
 <     Trainer,
@@ -16,22 +16,22 @@
 51a49,59
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-> 
+>
+>
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-> 
+>
 55,56c63,65
 < # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 < check_min_version("4.52.0.dev0")
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.51.0")
-> check_optimum_habana_min_version("1.21.0")
+> check_optimum_habana_min_version("1.21.1")
 176a186,188
 >     mediapipe_dataloader: bool = field(
 >         default=False, metadata={"help": "Turn on MediaPipe hardware-based accelerated data loading."}
@@ -47,7 +47,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
-> 
+>
 261a281
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 263,264c283,285

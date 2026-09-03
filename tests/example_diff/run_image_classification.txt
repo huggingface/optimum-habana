@@ -6,7 +6,7 @@
 23a27
 > import transformers
 36,37d39
-< 
+<
 < import transformers
 45,47d46
 <     Trainer,
@@ -15,12 +15,12 @@
 52a52,61
 > from optimum.habana import GaudiConfig, GaudiTrainer, GaudiTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-> 
+>
+>
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
 54d62
@@ -31,7 +31,7 @@
 ---
 > # Will error if the minimal version of Transformers and Optimum Habana are not installed. Remove at your own risks.
 > check_min_version("4.51.0")
-> check_optimum_habana_min_version("1.21.0")
+> check_optimum_habana_min_version("1.21.1")
 184c193
 <     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
 ---
@@ -43,7 +43,7 @@
 >         revision=model_args.model_revision,
 >         token=model_args.token,
 >     )
-> 
+>
 213a230
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 215,216c232,234

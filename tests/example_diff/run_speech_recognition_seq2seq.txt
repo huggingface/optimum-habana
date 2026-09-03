@@ -6,7 +6,7 @@
 > from typing import Any, Dict, List, Optional, Union
 30,31d30
 < from datasets import DatasetDict, load_dataset
-< 
+<
 32a32
 > from datasets import DatasetDict, load_dataset
 40,42d39
@@ -16,20 +16,20 @@
 47a45,55
 > from optimum.habana import GaudiConfig, GaudiSeq2SeqTrainer, GaudiSeq2SeqTrainingArguments
 > from optimum.habana.utils import set_seed
-> 
-> 
+>
+>
 > try:
 >     from optimum.habana.utils import check_optimum_habana_min_version
 > except ImportError:
-> 
+>
 >     def check_optimum_habana_min_version(*a, **b):
 >         return ()
-> 
+>
 50c58,59
 < check_min_version("4.52.0.dev0")
 ---
 > check_min_version("4.51.0")
-> check_optimum_habana_min_version("1.21.0")
+> check_optimum_habana_min_version("1.21.1")
 112c121
 <     forced_decoder_ids: list[list[int]] = field(
 ---
@@ -67,7 +67,7 @@
 >         cache_dir=model_args.cache_dir,
 >         token=model_args.token,
 >     )
-> 
+>
 309a334
 >     mixed_precision = training_args.bf16 or gaudi_config.use_torch_autocast
 311,312c336,338
