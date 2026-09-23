@@ -55,7 +55,7 @@ jobs:
           HF_DOC_BUILD_PUSH: ${{ secrets.HF_DOC_BUILD_PUSH }}
         run: |
           sudo docker system prune -af
-          make doc BUILD_DIR=habana-doc-build VERSION=${{ env.VERSION }}
+          make doc BUILD_DIR=habana-doc-build VERSION=${VERSION}
           sudo chmod -R ugo+rwx habana-doc-build
           cd habana-doc-build
           sudo mv optimum.habana optimum-habana
