@@ -8,8 +8,12 @@ on:
 concurrency:
   group: ${{ github.workflow }}
 
+permissions: {}
+
 jobs:
   example-diff:
+    permissions:
+      contents: read
     name: Test examples differences
     runs-on:
       group: itac-bm-emr-gaudi3-dell-1gaudi
@@ -30,6 +34,8 @@ jobs:
         run: /bin/bash tests/ci/example_diff_tests.sh
 
   stable-diffusion:
+    permissions:
+      contents: read
     name: Test Stable Diffusion
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -55,6 +61,8 @@ jobs:
         run: /bin/bash tests/ci/slow_tests_diffusers.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
 
   deepspeed:
+    permissions:
+      contents: read
     name: Test DeepSpeed models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -80,6 +88,8 @@ jobs:
         run: /bin/bash tests/ci/slow_tests_deepspeed.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
 
   fsdp:
+    permissions:
+      contents: read
     name: Test FSDP models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -105,6 +115,8 @@ jobs:
         run: make slow_tests_fsdp TOKEN="$TEXT_GENERATION_CI_HUB_TOKEN"
 
   multi-card:
+    permissions:
+      contents: read
     name: Test multi-card models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -130,6 +142,8 @@ jobs:
         run: /bin/bash tests/ci/slow_tests_8x.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
 
   single-card:
+    permissions:
+      contents: read
     name: Test single-card models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -156,6 +170,8 @@ jobs:
         run: /bin/bash tests/ci/slow_tests_1x.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
 
   text-generation:
+    permissions:
+      contents: read
     name: Test text-generation example
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -183,6 +199,8 @@ jobs:
         run: make slow_tests_text_generation_example TOKEN="$TEXT_GENERATION_CI_HUB_TOKEN"
 
   trl:
+    permissions:
+      contents: read
     name: Test TRL integration
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -206,6 +224,8 @@ jobs:
         run: /bin/bash tests/ci/slow_tests_trl.sh
 
   sentence-transformers:
+    permissions:
+      contents: read
     name: Test Sentence Transformers integration
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:

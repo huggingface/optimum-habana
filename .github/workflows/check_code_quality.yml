@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions: {}
+
 jobs:
   check:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:

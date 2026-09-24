@@ -9,8 +9,12 @@ on:
 concurrency:
   group: ${{ github.workflow }}
 
+permissions: {}
+
 jobs:
   example-diff:
+    permissions:
+      contents: read
     name: Test examples differences
     runs-on:
       group: aws-dl1-24xlarge
@@ -34,6 +38,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/example_diff_tests.sh
   stable-diffusion:
+    permissions:
+      contents: read
     name: Test Stable Diffusion
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -60,6 +66,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_diffusers.sh
   deepspeed:
+    permissions:
+      contents: read
     name: Test DeepSpeed models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -87,6 +95,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_deepspeed.sh
   multi-card:
+    permissions:
+      contents: read
     name: Test multi-card models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -114,6 +124,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_8x.sh
   single-card:
+    permissions:
+      contents: read
     name: Test single-card models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -142,6 +154,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_1x.sh
   albert-xxl-single-card:
+    permissions:
+      contents: read
     name: Test single-card ALBERT XXL
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -177,6 +191,8 @@ jobs:
         if: github.event.schedule != '0 21 * * 6'
         run: echo "ALBERT XXL 1x is only tested on Saturdays."
   text-generation:
+    permissions:
+      contents: read
     name: Test text-generation example
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -209,6 +225,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             make slow_tests_text_generation_example TOKEN="$TEXT_GENERATION_CI_HUB_TOKEN"
   trl:
+    permissions:
+      contents: read
     name: Test TRL integration
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -240,6 +258,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_trl.sh
   sentence-transformers:
+    permissions:
+      contents: read
     name: Test Sentence Transformers integration
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
