@@ -11,8 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   transformers:
+    permissions:
+      contents: read
     name: Run tests for optimum.habana.transformers
     runs-on:
       group: intel-gaudi3-2g
@@ -38,6 +42,8 @@ jobs:
           /bin/bash tests/ci/fast_tests.sh
 
   diffusers:
+    permissions:
+      contents: read
     name: Run tests for optimum.habana.diffusers
     runs-on:
       group: intel-gaudi3-1g

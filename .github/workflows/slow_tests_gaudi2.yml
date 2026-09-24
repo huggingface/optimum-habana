@@ -8,8 +8,12 @@ on:
 concurrency:
   group: ${{ github.workflow }}
 
+permissions: {}
+
 jobs:
   example-diff:
+    permissions:
+      contents: read
     name: Test examples differences
     runs-on: [self-hosted, linux, x64, gaudi2, nightly]
     steps:
@@ -33,6 +37,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/example_diff_tests.sh
   stable-diffusion:
+    permissions:
+      contents: read
     name: Test Stable Diffusion
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -64,6 +70,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_diffusers.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
   deepspeed:
+    permissions:
+      contents: read
     name: Test DeepSpeed models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -95,6 +103,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_deepspeed.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
   fsdp:
+    permissions:
+      contents: read
     name: Test FSDP models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -126,6 +136,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             make slow_tests_fsdp TOKEN="$TEXT_GENERATION_CI_HUB_TOKEN"
   multi-card:
+    permissions:
+      contents: read
     name: Test multi-card models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -157,6 +169,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_8x.sh "$TEXT_GENERATION_CI_HUB_TOKEN"
   single-card:
+    permissions:
+      contents: read
     name: Test single-card models
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -188,6 +202,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_1x.sh
   text-generation:
+    permissions:
+      contents: read
     name: Test text-generation example
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -221,6 +237,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             make slow_tests_text_generation_example TOKEN="$TEXT_GENERATION_CI_HUB_TOKEN"
   trl:
+    permissions:
+      contents: read
     name: Test TRL integration
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
@@ -250,6 +268,8 @@ jobs:
             vault.habana.ai/gaudi-docker/1.24.0/ubuntu22.04/habanalabs/pytorch-installer-2.10.0:latest \
             /bin/bash tests/ci/slow_tests_trl.sh
   sentence-transformers:
+    permissions:
+      contents: read
     name: Test Sentence Transformers integration
     if: ${{ !cancelled() && (success() || failure()) }}
     needs:
