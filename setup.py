@@ -77,7 +77,7 @@ setup(
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     classifiers=[
-        "Development Status :: 5 - Production/Stable",
+        "Development Status :: 7 - Inactive",
         "License :: OSI Approved :: Apache Software License",
         "Intended Audience :: Developers",
         "Intended Audience :: Education",
@@ -89,6 +89,11 @@ setup(
     ],
     keywords="transformers, diffusers, mixed-precision training, fine-tuning, gaudi, hpu",
     url="https://huggingface.co/hardware/habana",
+    project_urls={
+        "Source": "https://github.com/huggingface/optimum-habana",
+        "Documentation": "https://huggingface.co/docs/optimum/habana/index",
+        "End of support notice": "https://github.com/huggingface/optimum-habana#readme",
+    },
     author="HuggingFace Inc. Special Ops Team",
     author_email="hardware@huggingface.co",
     license="Apache",

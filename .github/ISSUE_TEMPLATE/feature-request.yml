@@ -2,6 +2,12 @@ name: "\U0001F680 Feature request"
 description: Submit a proposal/request for a new Optimum Habana feature
 labels: [ "feature" ]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        > **End of support:** As of 2026-10-31, `optimum-habana` is no longer officially supported.
+        > No new features are planned, and feature requests may not be reviewed.
+
   - type: textarea
     id: feature-request
     validations:
