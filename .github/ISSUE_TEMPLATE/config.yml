@@ -1,6 +1,9 @@
 blank_issues_enabled: true
 version: 2.1
 contact_links:
+  - name: End of support notice
+    url: https://github.com/huggingface/optimum-habana#readme
+    about: optimum-habana is no longer officially supported as of 2026-10-31. Issues may not be reviewed.
   - name: Website Related
     url: https://github.com/huggingface/hub-docs/issues
     about: Feature requests and bug reports related to the website

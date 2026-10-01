@@ -25,6 +25,14 @@ limitations under the License.
 
 # Optimum for Intel® Gaudi® Accelerators
 
+> **END OF SUPPORT.** As of 2026-10-31, `optimum-habana` is no longer officially supported.
+> The repository and all PyPI releases remain available, but no new features are planned,
+> bug fixes are not guaranteed, security vulnerabilities (including CVEs) may not be
+> investigated or fixed, and issues and pull requests may not be reviewed.
+> The final release is `v1.21.2` (Intel Gaudi Software 1.24, Transformers 4.55.x).
+> There is no officially recommended replacement. You may fork this project under the
+> Apache 2.0 license.
+
 Optimum for Intel Gaudi - a.k.a. `optimum-habana` - is the interface between the Transformers and Diffusers libraries and
 [Intel Gaudi AI Accelerators (HPU)](https://docs.habana.ai/en/latest/index.html). It provides a set of tools enabling easy
 model loading, training and inference on single- and multi-HPU settings for different downstream tasks. The list of officially
@@ -65,9 +73,9 @@ The `--upgrade-strategy eager` option is needed to ensure `optimum-habana` is up
 To use the example associated with the latest stable release, run:
 ```bash
 git clone https://github.com/huggingface/optimum-habana
-cd optimum-habana && git checkout v1.21.1
+cd optimum-habana && git checkout v1.21.2
 ```
-with `v1.21.1` being the latest Optimum for Intel Gaudi release version.
+with `v1.21.2` being the latest Optimum for Intel Gaudi release version.
 
 ### Option 2: Use the latest main branch under development
 
